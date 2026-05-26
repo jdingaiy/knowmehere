@@ -1,0 +1,21 @@
+# Local dev server scratch file
+_srv.js
+
+# Claude Code working dir (memory, history, plans) — not part of the project
+.claude/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Node modules in case anyone adds tooling later
+node_modules/
+
+# Logs
+*.log
+
+# Blender working files (keep textures, drop the heavy source files if any)
+# *.blend  # uncomment if you don't want to ship the .blend sources

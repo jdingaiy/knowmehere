@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>联系我 · 谭加奇</title>
+  <meta name="description" content="联系谭加奇 · UX 设计师 / AI 产品 · 邮件 / 微信" />
+  <link rel="stylesheet" href="css/global.css" />
+  <link rel="stylesheet" href="css/pages.css" />
+</head>
+<body>
+
+  <nav class="nav" role="navigation">
+    <a href="index.html" class="nav-logo">谭<span>.</span></a>
+    <ul class="nav-links">
+      <li><a href="index.html">作品</a></li>
+      <li><a href="cv.html">简历</a></li>
+      <li><a href="contact.html" class="active">联系</a></li>
+    </ul>
+  </nav>
+
+  <div class="page-wrapper">
+    <main class="contact-wrap" role="main">
+      <div class="contact-content">
+
+        <h1 class="contact-greeting">来找我<span>聊聊</span>吧</h1>
+        <p class="contact-bio">
+          正在寻找 UX / AI 产品方向的实习机会，目前在上海。<br/>
+          欢迎合作、交流，也欢迎单纯来聊设计和有趣的东西 ☕
+        </p>
+
+        <div class="contact-rows">
+
+          <a href="mailto:jiaqi_tan@tju.edu.cn"
+             class="contact-row" id="contact-email-link">
+            <div class="contact-row-left">
+              <span class="contact-row-icon">✉️</span>
+              <div>
+                <div class="contact-row-label">邮件</div>
+                <div class="contact-row-value">jiaqi_tan@tju.edu.cn</div>
+              </div>
+            </div>
+            <span class="contact-row-arrow">→</span>
+          </a>
+
+          <div class="contact-row" id="wechat-copy-row" style="cursor:pointer;">
+            <div class="contact-row-left">
+              <span class="contact-row-icon">💬</span>
+              <div>
+                <div class="contact-row-label">微信（同手机号）</div>
+                <div class="contact-row-value">155 7582 4630</div>
+              </div>
+            </div>
+            <span class="contact-row-arrow" id="copy-hint">点击复制</span>
+          </div>
+
+        </div>
+
+        <p class="contact-note">
+          天津大学建筑学硕士在读 · 2027 届毕业生<br/>
+          求职方向：UX 实习生 / AI 产品经理
+        </p>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    document.getElementById('wechat-copy-row').addEventListener('click', function () {
+      const hint = document.getElementById('copy-hint');
+      navigator.clipboard.writeText('15575824630').then(() => {
+        hint.textContent = '✓ 已复制';
+        hint.style.color = 'var(--accent-mint)';
+        setTimeout(() => { hint.textContent = '点击复制'; hint.style.color = ''; }, 2000);
+      }).catch(() => { hint.textContent = '15575824630'; });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>谭加奇 · 作品集</title>
+  <meta name="description" content="谭加奇 · UX 设计师 / AI 产品方向 · 天津大学 2027届" />
+  <link rel="stylesheet" href="css/global.css" />
+  <link rel="stylesheet" href="css/board.css" />
+  <link rel="stylesheet" href="css/pages.css" />
+  <script type="importmap">
+  { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+
+  <!-- ── LOGO (fixed, global) ── -->
+  <a href="#works" class="ui-logo" id="site-logo" data-panel="works" aria-label="首页">谭<span>.</span></a>
+
+  <!-- ── Right pill — filter on works, download on cv ── -->
+  <button class="ui-pill ui-pill-right" id="filter-btn" aria-haspopup="listbox" aria-expanded="false">
+    <span id="filter-label">全部</span>
+    <span class="ui-pill-chevron">▾</span>
+  </button>
+  <a class="ui-pill ui-pill-right" id="dl-btn"
+     href="UX作品整理2605版-谭加奇-27届-天津大学(1).pdf" download style="display:none;">
+    ↓ 下载简历
+  </a>
+
+  <div class="ui-dropdown" id="filter-dropdown" role="listbox">
+    <div class="ui-drop-item active" data-filter="all"       role="option" tabindex="0">
+      <span class="dot" style="background:var(--ink-3)"></span> 全部
+    </div>
+    <div class="ui-drop-divider"></div>
+    <div class="ui-drop-item" data-filter="vibe"      role="option" tabindex="0">
+      <span class="dot" style="background:var(--cat-vibe)"></span> Vibe
+    </div>
+    <div class="ui-drop-item" data-filter="portfolio" role="option" tabindex="0">
+      <span class="dot" style="background:var(--cat-portfolio)"></span> 作品集
+    </div>
+    <div class="ui-drop-item" data-filter="studio"    role="option" tabindex="0">
+      <span class="dot" style="background:var(--cat-studio)"></span> 工作室
+    </div>
+    <div class="ui-drop-item" data-filter="illus"     role="option" tabindex="0">
+      <span class="dot" style="background:var(--cat-illus)"></span> 插画
+    </div>
+    <div class="ui-drop-divider"></div>
+    <div class="ui-drop-item" id="reset-btn" role="option" tabindex="0" style="color:var(--ink-3)">
+      ↺ 重置位置
+    </div>
+  </div>
+
+  <!-- ── Sliding two-panel track ── -->
+  <div class="app-track" id="app-track">
+
+    <!-- WORKS panel -->
+    <section class="app-panel app-panel-works" aria-label="作品">
+      <main class="board-page" role="main">
+        <div id="room-canvas" class="room-canvas"
+             aria-label="项目贴纸 3D 收集板，拖拽探索，点击查看详情"></div>
+      </main>
+      <div class="drag-hint" aria-hidden="true">
+        <span>拖拽</span>
+        <div class="drag-hint-line"></div>
+      </div>
+    </section>
+
+    <!-- CV panel -->
+    <section class="app-panel app-panel-cv" aria-label="简历">
+      <div class="cv-wrap">
+        <header class="cv-head">
+          <h1 class="cv-name">谭加奇<em>.</em></h1>
+          <p class="cv-role">UX 设计师 · AI 产品方向 · 天津大学 2027 届</p>
+          <div class="cv-meta">
+            <span>📍 上海</span>
+            <a href="tel:15575824630">📱 155 7582 4630</a>
+            <a href="mailto:jiaqi_tan@tju.edu.cn">✉️ jiaqi_tan@tju.edu.cn</a>
+          </div>
+        </header>
+
+        <section class="cv-sec" aria-labelledby="edu">
+          <h2 class="cv-sec-title" id="edu">教育经历</h2>
+          <div class="cv-entry">
+            <p class="cv-org">天津大学</p>
+            <p class="cv-role-title">建筑学 · 硕士在读（保送）· 数字化设计工作室</p>
+            <p class="cv-date">2024.09 — 至今</p>
+            <ul class="cv-ul">
+              <li>研究方向：人机交互与数字化设计</li>
+              <li>核心课程：机器学习基础 <span class="n">(92)</span>、数据分析与挖掘 <span class="n">(90)</span>、图论 <span class="n">(94)</span></li>
+              <li>第一作者论文收录于 2025 计算性设计学术论坛（YOLOv8 折叠装置研究）</li>
+            </ul>
+          </div>
+          <div class="cv-entry">
+            <p class="cv-org">天津大学</p>
+            <p class="cv-role-title">建筑学 · 本科</p>
+            <p class="cv-date">2019.09 — 2024.07</p>
+            <ul class="cv-ul">
+              <li>GPA <span class="n">3.85/4.0</span> · 英语六级 556 · 日语 N2</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="cv-sec" aria-labelledby="exp">
+          <h2 class="cv-sec-title" id="exp">实习经历</h2>
+          <div class="cv-entry">
+            <p class="cv-org">小红书</p>
+            <p class="cv-role-title">体验设计实习生</p>
+            <p class="cv-date">2026.01 — 2026.05</p>
+            <ul class="cv-ul">
+              <li><b>Form 24H 黑客松 Top 15</b>：独立设计「生活印诗歌机」，24H 内完成 OCR → AIGC 诗歌生成完整交互流程</li>
+              <li><b>风险感知平台 Nova Chat</b>：主导中台智能助手原型，核心操作链路缩短 <span class="n">40%</span>，培训时间降低 <span class="n">30%</span></li>
+              <li><b>AI 健康打卡 App</b>：重构日历信息架构，打卡渗透率 <span class="n">↑25%</span>，贴纸视觉可用率 <span class="n">95%+</span></li>
+              <li><b>适老化体验升级</b>：开发 Figma Token 校验插件，走查效率 <span class="n">↑60%</span>，Feed 流点击转化 <span class="n">↑5%</span></li>
+            </ul>
+          </div>
+          <div class="cv-entry">
+            <p class="cv-org">宜家中国创新中心 · Content Space</p>
+            <p class="cv-role-title">体验设计实习生（AI 产品方向）</p>
+            <p class="cv-date">2025.07 — 2025.12</p>
+            <ul class="cv-ul">
+              <li><b>电商内容 AIGC 生产引擎</b>：视频效率 <span class="n">↑80%</span>，节省外包成本 <span class="n">20万/年</span>，覆盖率 <span class="n">↑50%</span></li>
+              <li><b>门店虚拟导购助手</b>：问答准确率 <span class="n">89%</span>，停留时长 <span class="n">↑15%</span>，锅具销量 <span class="n">↑12%</span></li>
+            </ul>
+          </div>
+          <div class="cv-entry">
+            <p class="cv-org">次元空间网络科技</p>
+            <p class="cv-role-title">产品实习生</p>
+            <p class="cv-date">2025.06 — 2025.07</p>
+            <ul class="cv-ul">
+              <li>建筑规范智能助手，构建 3 万条结构化索引，检索准确率 <span class="n">89%</span>，召回率 <span class="n">↑36%</span></li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="cv-sec" aria-labelledby="proj">
+          <h2 class="cv-sec-title" id="proj">项目经历</h2>
+          <div class="cv-entry">
+            <p class="cv-org">个人项目</p>
+            <p class="cv-role-title">Giggo · C 端建筑自由职业者平台</p>
+            <p class="cv-date">2024.09 — 2025.01</p>
+            <ul class="cv-ul">
+              <li>针对建筑私活市场信任缺失，构建作品画像智能匹配 + 分阶段担保交付信任模型</li>
+              <li>线条漫画 UI + Figma & Cursor 完成全流程 MVP 设计与前后端开发</li>
+            </ul>
+          </div>
+          <div class="cv-entry">
+            <p class="cv-org">天津大学数字化设计工作室</p>
+            <p class="cv-role-title">折叠装置 · 城市实时互动 HCI 研究</p>
+            <p class="cv-date">2024.09 — 2025</p>
+            <ul class="cv-ul">
+              <li>YOLOv8 + 机器学习研究实时响应人群密度的具身智能折叠装置，第一作者论文</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="cv-sec" aria-labelledby="skills">
+          <h2 class="cv-sec-title" id="skills">技能</h2>
+          <div class="skill-wrap">
+            <span class="skill">Figma</span>
+            <span class="skill">Adobe Illustrator</span>
+            <span class="skill">Photoshop · InDesign</span>
+            <span class="skill">Rhino · Sketch Up</span>
+            <span class="skill">Cursor · Vibe Coding</span>
+            <span class="skill">HTML / CSS / JS</span>
+            <span class="skill">Python 基础</span>
+            <span class="skill">YOLOv8</span>
+            <span class="skill">Prompt 工程</span>
+            <span class="skill">英语六级 (556)</span>
+            <span class="skill">日语 N2</span>
+          </div>
+        </section>
+
+        <section class="cv-contact-block" aria-labelledby="contact">
+          <h2 class="cv-sec-title" id="contact">联系我</h2>
+          <p class="cv-contact-bio">
+            正在寻找 UX / AI 产品方向的实习机会，目前在上海。<br/>
+            欢迎合作、交流，也欢迎单纯来聊设计 ☕
+          </p>
+          <div class="cv-contact-rows">
+            <a href="mailto:jiaqi_tan@tju.edu.cn" class="cv-contact-row">
+              <div class="cv-contact-left">
+                <span class="cv-contact-ico">✉️</span>
+                <div>
+                  <div class="cv-contact-lbl">邮件</div>
+                  <div class="cv-contact-val">jiaqi_tan@tju.edu.cn</div>
+                </div>
+              </div>
+              <span class="cv-contact-arrow">→</span>
+            </a>
+            <div class="cv-contact-row" id="wechat-row" style="cursor:pointer;">
+              <div class="cv-contact-left">
+                <span class="cv-contact-ico">💬</span>
+                <div>
+                  <div class="cv-contact-lbl">微信（同手机号）</div>
+                  <div class="cv-contact-val">155 7582 4630</div>
+                </div>
+              </div>
+              <span class="cv-contact-arrow" id="copy-hint">点击复制</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+  </div><!-- /.app-track -->
+
+  <!-- ── BOTTOM TABS (fixed, global) ── -->
+  <div class="ui-tabs" data-active="works" role="navigation" aria-label="页面切换">
+    <a href="#works" class="ui-tab active" data-panel="works" id="tab-works">作品</a>
+    <a href="#cv"    class="ui-tab"        data-panel="cv"    id="tab-cv">简历</a>
+  </div>
+
+  <!-- hover tag follows the cursor over a sticker -->
+  <div id="sticker-tag" class="sticker-tag" aria-hidden="true"></div>
+
+  <!-- MODAL -->
+  <div id="modal-overlay" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <button class="modal-close-btn" aria-label="关闭">✕</button>
+      <div class="modal-body">
+        <div id="modal-slot"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- sticker data (global STICKERS_DATA) -->
+  <script src="js/stickers-data.js"></script>
+
+  <!-- modal + UI logic (non-module) -->
+  <script>
+    const overlay   = document.getElementById('modal-overlay');
+    const filterBtn = document.getElementById('filter-btn');
+    const filterDD  = document.getElementById('filter-dropdown');
+    const filterLbl = document.getElementById('filter-label');
+    const dlBtn     = document.getElementById('dl-btn');
+    const track     = document.getElementById('app-track');
+    const tabWorks  = document.getElementById('tab-works');
+    const tabCv     = document.getElementById('tab-cv');
+    let currentModal = null;
+
+    function renderModal(d) {
+      // Section 1 — Gallery: large image with left/right arrows.
+      //   data field: d.gallery = ['assets/...png', ...]
+      //   fallback: a single sticker icon
+      const imgs = (Array.isArray(d.gallery) && d.gallery.length)
+        ? d.gallery : [d.sticker];
+      const dotsCount = imgs.length;
+      const gallery = `
+        <div class="gal${imgs.length < 2 ? ' single' : ''}">
+          <div class="gal-stage">
+            <img class="gal-img" src="${imgs[0]}" alt="${d.name}" id="gal-img" />
+            <button class="gal-btn gal-prev" aria-label="上一张">‹</button>
+            <button class="gal-btn gal-next" aria-label="下一张">›</button>
+          </div>
+          <div class="gal-counter" id="gal-counter">1 / ${dotsCount}</div>
+        </div>`;
+
+      // Section 2 — Demo: just an iframe filling the row, no card.
+      const demoBlock = d.demoType === 'iframe'
+        ? `<section class="dp-demo">
+             ${(!d.demoUrl || d.demoUrl.startsWith('PLACEHOLDER'))
+               ? `<div class="dp-demo-ph"><span class="ph-emoji">${d.heroEmoji}</span>Demo 链接即将添加</div>`
+               : `<iframe src="${d.demoUrl}" title="${d.name}" allowfullscreen loading="lazy"></iframe>`}
+           </section>` : '';
+
+      // Section 3 — Long images: each picture full-width, zero gap (seamless).
+      //   data field: d.longImages = ['assets/long/01.jpg', ...]
+      const longs = (Array.isArray(d.longImages) && d.longImages.length)
+        ? `<section class="dp-long">
+             ${d.longImages.map(src => `<img src="${src}" alt="${d.name}" loading="lazy" />`).join('')}
+           </section>` : '';
+
+      const tags = d.tags.map(t => `<span class="badge badge-${d.category}">${t}</span>`).join('');
+      const metrics = d.metrics.length
+        ? `<div class="dp-metrics">
+             ${d.metrics.map(m => `
+               <div class="dp-metric">
+                 <span class="dp-metric-val">${m.value}</span>
+                 <span class="dp-metric-lbl">${m.label}</span>
+               </div>`).join('')}
+           </div>` : '';
+      const paras = d.description.split(/\n\s*\n/).map(p => `<p>${p}</p>`).join('');
+
+      return `
+        ${gallery}
+        <header class="dp-header">
+          <div class="dp-tags">${tags}</div>
+          <h1 class="dp-title">${d.name}</h1>
+          <p class="dp-meta">${d.role} · ${d.period}</p>
+          ${metrics}
+          <div class="dp-desc">${paras}</div>
+        </header>
+        ${demoBlock}
+        ${longs}`;
+    }
+    function openModal(d) {
+      currentModal = d;
+      document.getElementById('modal-slot').innerHTML = renderModal(d);
+      overlay.classList.add('open');
+      document.body.classList.add('modal-open');
+      document.body.style.overflow = 'hidden';
+      if (window.__room) window.__room.pause();
+      initCarousel();
+    }
+    function closeModal() {
+      overlay.classList.remove('open');
+      document.body.classList.remove('modal-open');
+      document.body.style.overflow = '';
+      if (window.__room && !track.classList.contains('show-cv')) window.__room.resume();
+      currentModal = null;
+    }
+
+    function initCarousel() {
+      const gal = document.querySelector('.modal-box .gal');
+      if (!gal || gal.classList.contains('single')) return;
+      const img = gal.querySelector('#gal-img');
+      const counter = gal.querySelector('#gal-counter');
+      const imgs = (currentModal && currentModal.gallery && currentModal.gallery.length)
+        ? currentModal.gallery : [currentModal.sticker];
+      let i = 0;
+      function go(n) {
+        i = (n + imgs.length) % imgs.length;
+        img.classList.add('fading');
+        setTimeout(() => {
+          img.src = imgs[i];
+          counter.textContent = `${i+1} / ${imgs.length}`;
+          img.classList.remove('fading');
+        }, 160);
+      }
+      gal.querySelector('.gal-prev').addEventListener('click', () => go(i - 1));
+      gal.querySelector('.gal-next').addEventListener('click', () => go(i + 1));
+      // swipe
+      let sx = 0, dragging = false;
+      gal.addEventListener('pointerdown', e => {
+        if (e.target.closest('.gal-btn')) return;
+        dragging = true; sx = e.clientX;
+        gal.setPointerCapture && gal.setPointerCapture(e.pointerId);
+      });
+      gal.addEventListener('pointerup', e => {
+        if (!dragging) return; dragging = false;
+        const dx = e.clientX - sx;
+        if (Math.abs(dx) > 40) go(i + (dx < 0 ? 1 : -1));
+      });
+    }    overlay.addEventListener('click', e => {
+      if (e.target === overlay || e.target.classList.contains('modal-close-btn')) closeModal();
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && currentModal) closeModal(); });
+    window.__modalApi = { open: openModal, close: closeModal };
+
+    // ── panel slide ──
+    let pauseTimer = null;
+    function showPanel(name) {
+      const cv = (name === 'cv');
+      track.classList.toggle('show-cv', cv);
+      document.querySelector('.ui-tabs').setAttribute('data-active', name);
+      tabWorks.classList.toggle('active', !cv);
+      tabCv   .classList.toggle('active',  cv);
+      filterBtn.style.display = cv ? 'none' : '';
+      dlBtn.style.display     = cv ? '' : 'none';
+      if (cv) {
+        filterDD.classList.remove('open');
+        filterBtn.classList.remove('open');
+      }
+      // Pause/resume the 3D loop so it doesn't keep rendering off-screen.
+      // Pause AFTER the slide finishes so the canvas keeps animating during
+      // the transition; resume immediately when sliding back.
+      clearTimeout(pauseTimer);
+      if (cv) {
+        pauseTimer = setTimeout(() => { window.__room && window.__room.pause(); }, 700);
+      } else {
+        window.__room && window.__room.resume();
+      }
+    }
+    document.querySelectorAll('[data-panel]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        showPanel(el.dataset.panel);
+      });
+    });
+    if (location.hash === '#cv') showPanel('cv');
+
+    // ── filter dropdown ──
+    filterBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = filterDD.classList.toggle('open');
+      filterBtn.classList.toggle('open', open);
+      filterBtn.setAttribute('aria-expanded', open);
+    });
+    filterDD.querySelectorAll('.ui-drop-item[data-filter]').forEach(item => {
+      item.addEventListener('click', () => {
+        const cat = item.dataset.filter;
+        filterDD.querySelectorAll('.ui-drop-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        filterLbl.textContent = item.textContent.trim();
+        filterDD.classList.remove('open');
+        filterBtn.classList.remove('open');
+        filterBtn.setAttribute('aria-expanded', 'false');
+        if (window.__room) window.__room.applyFilter(cat);
+      });
+    });
+    document.getElementById('reset-btn').addEventListener('click', () => {
+      filterDD.classList.remove('open');
+      if (window.__room) window.__room.resetStickers();
+    });
+    document.addEventListener('click', () => {
+      filterDD.classList.remove('open');
+      filterBtn.classList.remove('open');
+      filterBtn.setAttribute('aria-expanded', 'false');
+    });
+
+    // wechat row copy
+    document.getElementById('wechat-row').addEventListener('click', function () {
+      const hint = document.getElementById('copy-hint');
+      navigator.clipboard.writeText('15575824630').then(() => {
+        hint.textContent = '✓ 已复制';
+        hint.style.color = '#2a8a6e';
+        setTimeout(() => { hint.textContent = '点击复制'; hint.style.color = ''; }, 2000);
+      }).catch(() => { hint.textContent = '15575824630'; });
+    });
+
+    // drag hint auto-hide
+    setTimeout(() => {
+      const h = document.querySelector('.drag-hint');
+      if (h) { h.style.transition = 'opacity 1s'; h.style.opacity = '0'; }
+    }, 5000);
+  </script>
+
+  <!-- 3D room (module) -->
+  <script type="module">
+    import { initRoom, addStickers, applyFilter, resetStickers, pause, resume } from './js/room3d.js';
+    const container = document.getElementById('room-canvas');
+    initRoom({ container, modalApi: window.__modalApi });
+    addStickers(window.STICKERS_DATA);
+    window.__room = { applyFilter, resetStickers, pause, resume };
+  </script>
+</body>
+</html>
