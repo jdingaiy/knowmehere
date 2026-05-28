@@ -373,10 +373,13 @@ body.modal-open .modal-close-btn { opacity: 1; pointer-events: auto; }
 
 /* Phone-aspect demo: set demoAspect:'phone' on the sticker data entry to
    render the iframe inside a phone-shaped frame. No hard border — just
-   rounded corners + soft shadow so it reads as a hovering screenshot. */
+   rounded corners + soft shadow so it reads as a hovering screenshot.
+   Aspect locked to iPhone 15 (393 × 852). */
 .dp-demo.dp-demo-phone iframe {
-  width: min(390px, 88vw);
-  height: min(844px, 80vh);
+  width: min(393px, 88vw);
+  aspect-ratio: 393 / 852;
+  height: auto;
+  max-height: 85vh;
   max-width: none;
   border: none;
   border-radius: 36px;
