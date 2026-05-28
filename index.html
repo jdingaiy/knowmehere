@@ -240,8 +240,8 @@
     let currentModal = null;
 
     function renderModal(d) {
-      // Special view: any IP-illustration sticker opens the unified IP page.
-      if (d && d.kind === 'illustration-ip') return renderIpModal();
+      // Special view: any IP-illustration sticker opens that IP's detail page.
+      if (d && d.kind === 'illustration-ip') return renderIpModal(d);
       // ── Default view: a project page (gallery + demo + long images) ──
       const hasDemo = d.demoType === 'iframe'
         && d.demoUrl
@@ -266,17 +266,15 @@
       return `${demo}${longs}`;
     }
 
-    // Build the unified IP / illustration detail page from the manifest.
-    function renderIpModal() {
+    // Build the IP / illustration detail page for ONE specific IP, based on
+    // the clicked sticker's ipName. (Different IPs are separate projects.)
+    function renderIpModal(d) {
       const m = window.__ipManifest || { ips: [] };
-      // First screen: every IP sticker scattered across the viewport.
-      // Positions/rotations are computed in CSS via custom properties so JS
-      // doesn't have to reflow on resize.
-      const allStickers = [];
-      for (const ip of m.ips) {
-        for (const src of ip.stickers) allStickers.push({ src, ip: ip.name });
-      }
-      const total = allStickers.length;
+      const ip = m.ips.find(x => x.name === (d && d.ipName)) || m.ips[0];
+      if (!ip) return `<div class="dp-empty">「IP」内容尚未上传</div>`;
+
+      // First screen: every sticker of THIS IP scattered across the viewport.
+      const allStickers = ip.stickers.map(src => ({ src, ip: ip.name }));
       const flyHtml = allStickers.map((s, i) => {
         // pseudo-random but stable per-index (avoids reshuffling each render)
         const seed = (i * 2654435761) >>> 0;       // Knuth multiplicative
@@ -290,21 +288,18 @@
         const sz   = 130;                            // uniform — no big/small mix
         const delay = (i * 28).toFixed(0);           // staggered entrance
         return `<img class="ip-fly" src="${encodeURI(s.src)}" alt="${s.ip}"
-          data-rot="${rot}"
+          data-rot="${rot}" data-ip="${s.ip}"
           style="--l:${left}%; --t:${top}%; --r:${rot}deg; --sz:${sz}px;
                  --delay:${delay}ms;" loading="lazy" draggable="false" />`;
       }).join('');
 
-      // Following screens: each long image on its own full-viewport page,
-      // contained with padding so we always see the full picture.
-      const pages = [];
-      for (const ip of m.ips) {
-        for (const img of (ip.longImages || [])) {
-          pages.push(`<section class="ip-page">
-                        <img src="${encodeURI(img)}" alt="${ip.name}" loading="lazy" />
-                      </section>`);
-        }
-      }
+      // Following screens: each long image of THIS IP on its own full-viewport
+      // page, contained with padding so we always see the full picture.
+      const pages = (ip.longImages || []).map(img =>
+        `<section class="ip-page">
+           <img src="${encodeURI(img)}" alt="${ip.name}" loading="lazy" />
+         </section>`
+      );
 
       return `
         <section class="ip-hero">
@@ -517,6 +512,7 @@
     // entries here as new IPs go into assets/stickers/ip stickers/.
     const IP_LABELS = {
       tianjin: '天津跳水队',
+      ciji: '刺吉',
     };
 
     async function loadIpStickers() {
@@ -534,7 +530,7 @@
             const j = Math.floor(Math.random() * (k + 1));
             [pool[k], pool[j]] = [pool[j], pool[k]];
           }
-          const pickCount = Math.min(pool.length, 2 + Math.floor(Math.random() * 2)); // 2 or 3
+          const pickCount = Math.min(pool.length, 2); // always 2 per IP
           const label = IP_LABELS[ip.name] || ip.name;
           for (let i = 0; i < pickCount; i++) {
             out.push({

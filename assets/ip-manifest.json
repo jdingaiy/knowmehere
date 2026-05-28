@@ -1,6 +1,24 @@
 {
   "ips": [
     {
+      "name": "ciji",
+      "stickers": [
+        "assets/stickers/ip stickers/ciji/img_v3_02ka_3f4db09b-b63d-4211-ac23-a90e133f51cg.png",
+        "assets/stickers/ip stickers/ciji/img_v3_02ka_55c4e3ce-24f9-4147-ad80-a4d9fa02631g.png",
+        "assets/stickers/ip stickers/ciji/img_v3_02kf_06ac53ee-19ae-4e55-ab8b-bc4e66341b1g.png",
+        "assets/stickers/ip stickers/ciji/img_v3_02kf_f66f25a7-78e2-4362-b03a-57624efc5f1g.png",
+        "assets/stickers/ip stickers/ciji/img_v3_02kk_c4ab98ca-2db5-453d-96d3-040c67e7ad5g.png",
+        "assets/stickers/ip stickers/ciji/img_v3_02ko_88f461f9-97c3-48e9-81db-9b9c33b3a40g.png",
+        "assets/stickers/ip stickers/ciji/img_v3_02kv_0b3e6c49-7570-403b-9e4a-7f4c601e9cdg.png",
+        "assets/stickers/ip stickers/ciji/img_v3_02kv_2dcac34d-dd01-499c-a5d6-dbbc1c4d4fbg 1.png"
+      ],
+      "longImages": [
+        "assets/projects/ip/ciji/1.jpg",
+        "assets/projects/ip/ciji/2.jpg",
+        "assets/projects/ip/ciji/3.jpg"
+      ]
+    },
+    {
       "name": "tianjin",
       "stickers": [
         "assets/stickers/ip stickers/tianjin/img_v3_02hj_02cce114-ee81-47f5-9979-3e12e3df496g 1.png",

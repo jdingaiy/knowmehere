@@ -15,7 +15,10 @@ import * as THREE from 'three';
 
 const CFG = {
   poleRadius: 4.2,
-  poleHeight: 28,        // tall — extends past the top/bottom of view
+  poleHeight: 44,        // tall — extends well past the viewport top/bottom
+                         // even on narrow mobile screens (where the camera
+                         // gets pulled back and the visible world half-height
+                         // grows past the desktop value)
   poleSegments: 96,      // smooth silhouette
   stickerStripWidth: 1.9, // arc-length size of stickers (unit world)
   whiteKey: 0.9,
@@ -91,8 +94,8 @@ poleTex.wrapS = THREE.RepeatWrapping;
 poleTex.wrapT = THREE.RepeatWrapping;
 poleTex.anisotropy = 8;
 // Tile so each repetition is roughly square in world units. Circumference is
-// 2*pi*radius ≈ 26.4, height 28; aim for ~4 world-unit tiles -> 6.6 × 7.
-poleTex.repeat.set(6.6, 7);
+// 2*pi*radius ≈ 26.4, height 44; aim for ~4 world-unit tiles -> 6.6 × 11.
+poleTex.repeat.set(6.6, 11);
 
 const poleMat = new THREE.MeshStandardMaterial({
   map: poleTex,
@@ -115,14 +118,26 @@ const stickerFrag = `
   precision highp float;
   uniform sampler2D map;
   uniform float borderPx;
+  uniform float cornerR;     // rounded-rect radius in UV units (0 = square)
   varying vec2 vUv;
+  // Anti-aliased rounded-rect mask in UV [0,1] space.
+  float roundMask(vec2 uv){
+    if (cornerR <= 0.0) return 1.0;
+    vec2 q = abs(uv - 0.5) - (0.5 - cornerR);
+    float d = length(max(q, 0.0)) - cornerR;
+    vec2 px = vec2(length(dFdx(uv)), length(dFdy(uv)));
+    float aa = max(max(px.x, px.y), 1e-5);
+    return 1.0 - smoothstep(-aa, aa, d);
+  }
   float aAt(vec2 uv){
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
-    return texture2D(map, uv).a;
+    return texture2D(map, uv).a * roundMask(uv);
   }
   void main(){
     bool inside = (vUv.x >= 0.0 && vUv.x <= 1.0 && vUv.y >= 0.0 && vUv.y <= 1.0);
     vec4 c = inside ? texture2D(map, vUv) : vec4(0.0);
+    float mask = inside ? roundMask(vUv) : 0.0;
+    c.a *= mask;
     vec2 px = vec2(length(dFdx(vUv)), length(dFdy(vUv)));
     float border = 0.0;
     for(int x=-2;x<=2;x++){
@@ -150,10 +165,19 @@ const shadowFrag = `
   uniform sampler2D map;
   uniform float strength;
   uniform float blurPx;  // blur radius in screen pixels
+  uniform float cornerR; // rounded-rect mask radius in UV units (0 = square)
   varying vec2 vUv;
+  float roundMask(vec2 uv){
+    if (cornerR <= 0.0) return 1.0;
+    vec2 q = abs(uv - 0.5) - (0.5 - cornerR);
+    float d = length(max(q, 0.0)) - cornerR;
+    vec2 px = vec2(length(dFdx(uv)), length(dFdy(uv)));
+    float aa = max(max(px.x, px.y), 1e-5);
+    return 1.0 - smoothstep(-aa, aa, d);
+  }
   float aAt(vec2 uv){
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
-    return texture2D(map, uv).a;
+    return texture2D(map, uv).a * roundMask(uv);
   }
   void main(){
     vec2 px = vec2(length(dFdx(vUv)), length(dFdy(vUv)));
@@ -221,6 +245,10 @@ function baseCam() {
   const padFrac = CFG.sidePadPx / w;
   const minZ = CFG.poleRadius / ((1 - 2 * padFrac) * halfTan * aspect);
   const dist = Math.max(CFG.camZDefault, minZ);
+  // How far up/down we can pan before the pole top/bottom enters the frame.
+  const halfH = dist * halfTan;
+  const safe = Math.max(0, CFG.poleHeight / 2 - halfH - 0.5);
+  viewY = clamp(viewY, -safe, safe);
   // Orbit the camera around the Y axis. The pole + all stickers stay still
   // in world space; only the camera moves. Looking at the cylinder centre
   // at the same height puts that point dead-centre on screen.
@@ -230,6 +258,22 @@ function baseCam() {
     Math.cos(cameraAngle) * dist
   );
   camera.lookAt(0, viewY, 0);
+}
+
+// Largest |viewY| that keeps the pole top/bottom out of frame, given the
+// current viewport. On wide desktops this is generous (~5); on narrow phones
+// the camera gets pulled back, the visible world half-height grows, and this
+// shrinks (often 1–3). Callers use it to decide whether to snap the camera
+// vertically onto a sticker.
+function safeViewYRange() {
+  const w = Math.max(1, container.clientWidth);
+  const aspect = camera.aspect;
+  const halfTan = Math.tan((camera.fov * Math.PI / 180) / 2);
+  const padFrac = CFG.sidePadPx / w;
+  const minZ = CFG.poleRadius / ((1 - 2 * padFrac) * halfTan * aspect);
+  const dist = Math.max(CFG.camZDefault, minZ);
+  const halfH = dist * halfTan;
+  return Math.max(0, CFG.poleHeight / 2 - halfH - 0.5);
 }
 
 /* ============ POLE ============ */
@@ -347,10 +391,16 @@ export function addStickers(list) {
     tex.magFilter = THREE.LinearFilter;
     tex.anisotropy = 16;
 
+    // Some IPs (ciji) are square photo crops — give them a rounded-rect mask
+    // so they read as sticker cards instead of raw screenshots. Other entries
+    // are PNGs with their own die-cut alpha and don't want any extra clip.
+    const cornerR = (d && d.ipName === 'ciji') ? 0.08 : 0.0;
+
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         map:      { value: tex },
         borderPx: { value: 6.0 },          // outline width in screen pixels
+        cornerR:  { value: cornerR },
       },
       vertexShader: stickerVert, fragmentShader: stickerFrag,
       transparent: true, depthWrite: false, depthTest: true,
@@ -365,6 +415,7 @@ export function addStickers(list) {
         map:      { value: tex },
         strength: { value: 0.35 },
         blurPx:   { value: 10.0 },   // soft blur radius in screen pixels
+        cornerR:  { value: cornerR },
       },
       vertexShader: stickerVert, fragmentShader: shadowFrag,
       transparent: true, depthWrite: false, depthTest: true,
@@ -385,6 +436,26 @@ export function addStickers(list) {
     world.add(mesh);
     stickers.push({ mesh, shMesh, data: d, theta, y, S, lift: 0.005, aspect: 1 });
   });
+  // Aim the camera at whichever side of the pole has the most stickers, so
+  // the first paint never lands on an empty back. We sweep the circle in
+  // 5-degree steps and score each candidate angle by how many stickers fall
+  // within a ±90° front-arc around it.
+  if (stickers.length) {
+    const STEPS = 72, HALF = Math.PI / 2;
+    let bestAngle = 0, bestScore = -1;
+    for (let k = 0; k < STEPS; k++) {
+      const a = (k / STEPS) * 2 * Math.PI - Math.PI;
+      let score = 0;
+      for (const s of stickers) {
+        let d2 = s.theta - a;
+        while (d2 >  Math.PI) d2 -= 2 * Math.PI;
+        while (d2 < -Math.PI) d2 += 2 * Math.PI;
+        if (Math.abs(d2) <= HALF) score++;
+      }
+      if (score > bestScore) { bestScore = score; bestAngle = a; }
+    }
+    cameraAngle = bestAngle;
+  }
   renderOnce();
 }
 
@@ -541,14 +612,19 @@ function onDown(e) {
     dragging._startX = e.clientX;
     dragging._baseAngle = targetAngle;
     dragging._baseTheta = picked.theta;
+    dragging._touch = (e.pointerType === 'touch');
     dragging.lift = DRAG_LIFT;
     rebuild(dragging);
     dragMoved = false;
     snapping = true;
-    Promise.all([
-      tweenCameraAngle(targetAngle, 380),
-      tweenViewY(picked.y, 380),
-    ]).then(() => { snapping = false; });
+    // Snap horizontally to centre the sticker. Snap vertically only when the
+    // sticker's y is within the current safe viewport range — otherwise the
+    // pole's top/bottom would enter frame and baseCam() would have to clamp
+    // viewY anyway, producing a visible bounce-back.
+    const safe = safeViewYRange();
+    const tweens = [tweenCameraAngle(targetAngle, 380)];
+    if (Math.abs(picked.y) <= safe) tweens.push(tweenViewY(picked.y, 380));
+    Promise.all(tweens).then(() => { snapping = false; });
     return;
   }
   // empty space (or click landed on the pole / back-side sticker) -> spin & pan
@@ -586,9 +662,15 @@ function onMove(e) {
     const local = pole.worldToLocal(hit.point.clone());
     const ny = clamp(local.y, -CFG.viewYRange, CFG.viewYRange);
     dragging.y = ny;
-    // Camera tracks the sticker vertically so the drag isn't capped at the
-    // viewport edge — clamped to the same range we use for wheel/pan.
-    viewY = ny;
+    // Camera follows the sticker vertically — but only inside the current
+    // safe range, AND only on mouse (touch + camera-follow creates a feedback
+    // loop). Once the sticker leaves the safe range we leave viewY alone so
+    // baseCam() doesn't have to fight the tween to keep the pole's caps out
+    // of frame.
+    if (!dragging._touch) {
+      const safe = safeViewYRange();
+      if (Math.abs(ny) <= safe) viewY = ny;
+    }
   }
   rebuild(dragging);
 

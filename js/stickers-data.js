@@ -122,9 +122,13 @@ const STICKERS_DATA = [
       { value: '↓30%', label: '员工上手培训时间' },
     ],
     demoType: null, demoUrl: null,
+    longImages: [
+      'assets/projects/nova-chat/nova-chat1.png',
+      'assets/projects/nova-chat/nova-chat2.png',
+    ],
     heroEmoji: '🛡️',
     ix: 0.14, iy: 0.48, rot: 6,
-    size: 'normal',
+    size: 'small',
   },
 
   // ── STUDIO ─────────────────────────────────────

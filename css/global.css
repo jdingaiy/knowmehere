@@ -460,6 +460,13 @@ body.modal-open .room-canvas { display: none; }
   touch-action: none;
 }
 .ip-fly:active { cursor: grabbing; }
+
+/* ciji stickers are square photos — clip them to a rounded rect so they
+   read as sticker-cards rather than raw screenshots. */
+.ip-fly[data-ip="ciji"] {
+  border-radius: 14px;
+  overflow: hidden;
+}
 @keyframes ip-fly-in {
   0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(0deg); }
   60%  { opacity: 1; transform: translate(-50%, -50%) scale(1.12) rotate(calc(var(--r) * 0.6)); }
