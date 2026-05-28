@@ -80,6 +80,11 @@ let dragging = null, dragMoved = false, downPos = { x: 0, y: 0 };
 let snapping = false;   // true during the per-pick snap animation; disables drag tracking
 let topOrder = 100;
 let isPaused = false;
+// One-shot hint: until the visitor has clicked any sticker, periodically
+// wiggle a random visible one to suggest they're interactive. The flag is
+// persisted so the hint never replays for returning visitors.
+const HINT_KEY = 'sk_hint_done_v1';
+let hintTimer = null, hintActive = null, hintStart = 0;
 const DRAG_LIFT = 0.55;    // how high a dragged sticker pops up off the cylinder
 const REST_LIFT = 0.005;   // resting lift just off the surface
 let container, modalApi, tagEl;
@@ -460,6 +465,81 @@ export function addStickers(list) {
     viewY = clamp(best.y, -safe, safe);
   }
   renderOnce();
+  // Kick off the click-hint loop on first paint (unless the visitor has
+  // already tapped a sticker in a previous session).
+  scheduleHint(1200);
+}
+
+/* ============ CLICK HINT ============ */
+// Picks a random sticker currently in the front 180° arc and rocks it
+// gently in place to suggest stickers are clickable. Cancels on any user
+// gesture; never replays once a sticker has been opened.
+function hintDone() {
+  try { return localStorage.getItem(HINT_KEY) === '1'; } catch (_) { return false; }
+}
+function scheduleHint(delayMs) {
+  if (hintDone()) return;
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(playHint, delayMs);
+}
+function stopHint() {
+  clearTimeout(hintTimer); hintTimer = null;
+  if (hintActive) {
+    // Snap the borrowed sticker back to its true theta + lift.
+    hintActive.theta = hintActive._hintTheta;
+    hintActive.lift  = REST_LIFT;
+    rebuild(hintActive);
+    hintActive = null;
+  }
+}
+function pickHintCandidate() {
+  const HALF = Math.PI / 2;
+  const front = stickers
+    .filter(s => s.mesh.visible)
+    .map(s => {
+      let d = s.theta - cameraAngle;
+      while (d >  Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      return { s, d: Math.abs(d) };
+    })
+    .filter(x => x.d <= HALF)
+    .sort((a, b) => a.d - b.d);
+  if (!front.length) return null;
+  // Bias toward whichever sticker is closest to the camera's current forward
+  // direction — pick from the nearest two so it doesn't always wiggle the
+  // exact same one when the camera is stationary.
+  const pool = front.slice(0, Math.min(2, front.length));
+  return pool[Math.floor(Math.random() * pool.length)].s;
+}
+function playHint() {
+  if (hintDone() || rotating || dragging) { scheduleHint(2000); return; }
+  const s = pickHintCandidate();
+  if (!s) { scheduleHint(2000); return; }
+  hintActive = s;
+  hintActive._hintTheta = s.theta;
+  hintStart = performance.now();
+  // The animation runs inside the main render loop via stepHint(); see
+  // animate(). We only kick off here and queue the next firing.
+  scheduleHint(2400);
+}
+function stepHint() {
+  if (!hintActive) return;
+  const DURATION = 1100;        // total wiggle length (ms)
+  const t = (performance.now() - hintStart) / DURATION;
+  if (t >= 1) {
+    // Restore and clear; next firing already scheduled in playHint().
+    hintActive.theta = hintActive._hintTheta;
+    hintActive.lift  = REST_LIFT;
+    rebuild(hintActive);
+    hintActive = null;
+    return;
+  }
+  // Decaying sine — ~2.5 oscillations, amplitude shrinks to zero.
+  const decay = Math.pow(1 - t, 1.2);
+  const swing = Math.sin(t * Math.PI * 2 * 2.5) * 0.06 * decay; // radians
+  hintActive.theta = hintActive._hintTheta + swing;
+  hintActive.lift  = REST_LIFT + 0.18 * decay; // small bob off the surface
+  rebuild(hintActive);
 }
 
 // Find the camera angle whose ±90° front-arc covers the most stickers, and
@@ -636,6 +716,9 @@ function pickStickerByAlpha() {
   return null;
 }
 function onDown(e) {
+  // Any pointer activity dismisses the wiggle hint for this session; if the
+  // visitor actually opens a sticker we'll persist it (see onUp).
+  stopHint();
   setPointer(e);
   raycaster.setFromCamera(pointer, camera);
   const picked = pickStickerByAlpha();
@@ -736,11 +819,19 @@ function onUp(e) {
         lastTapAt = now;
       }
     }
+    // Empty-space tap/drag finished without opening anything — resume the
+    // hint loop after a quiet beat so it doesn't fire on top of the user.
+    scheduleHint(3000);
     return;
   }
   if (!dragging) return;
   if (dragMoved) savePos(dragging.data.id, dragging.theta, dragging.y);
-  else if (modalApi && modalApi.open) modalApi.open(dragging.data);
+  else if (modalApi && modalApi.open) {
+    // First sticker tap — dismiss the click-hint loop permanently.
+    try { localStorage.setItem(HINT_KEY, '1'); } catch (_) {}
+    stopHint();
+    modalApi.open(dragging.data);
+  }
   // hide the flat preview, restore the curved sticker on the cylinder
   if (dragging.shMesh) dragging.shMesh.visible = true;
   dragging.mesh.visible = true;
@@ -792,6 +883,7 @@ function animate() {
   if (isPaused) return;
   requestAnimationFrame(animate);
   syncFlatToView();
+  stepHint();
   baseCam();
   renderer.render(scene, camera);
 }
