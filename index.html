@@ -59,10 +59,7 @@
         <div id="room-canvas" class="room-canvas"
              aria-label="项目贴纸 3D 收集板，拖拽探索，点击查看详情"></div>
       </main>
-      <div class="drag-hint" aria-hidden="true">
-        <span>拖拽</span>
-        <div class="drag-hint-line"></div>
-      </div>
+
     </section>
 
     <!-- CV panel -->
@@ -214,9 +211,13 @@
   <div id="sticker-tag" class="sticker-tag" aria-hidden="true"></div>
 
   <!-- MODAL -->
+  <!-- Close button lives OUTSIDE #modal-overlay: the overlay has
+       backdrop-filter (in IP mode) which establishes a containing block for
+       position:fixed descendants and would otherwise let the button scroll
+       with the overlay's content. -->
+  <button class="modal-close-btn" aria-label="关闭">✕</button>
   <div id="modal-overlay" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box">
-      <button class="modal-close-btn" aria-label="关闭">✕</button>
       <div class="modal-body">
         <div id="modal-slot"></div>
       </div>
@@ -239,75 +240,155 @@
     let currentModal = null;
 
     function renderModal(d) {
-      // Section 1 — Gallery: large image with left/right arrows.
-      //   data field: d.gallery = ['assets/...png', ...]
-      //   fallback: a single sticker icon
-      const imgs = (Array.isArray(d.gallery) && d.gallery.length)
-        ? d.gallery : [d.sticker];
-      const dotsCount = imgs.length;
-      const gallery = `
-        <div class="gal${imgs.length < 2 ? ' single' : ''}">
-          <div class="gal-stage">
-            <img class="gal-img" src="${imgs[0]}" alt="${d.name}" id="gal-img" />
-            <button class="gal-btn gal-prev" aria-label="上一张">‹</button>
-            <button class="gal-btn gal-next" aria-label="下一张">›</button>
-          </div>
-          <div class="gal-counter" id="gal-counter">1 / ${dotsCount}</div>
-        </div>`;
-
-      // Section 2 — Demo: just an iframe filling the row, no card.
-      const demoBlock = d.demoType === 'iframe'
-        ? `<section class="dp-demo">
-             ${(!d.demoUrl || d.demoUrl.startsWith('PLACEHOLDER'))
-               ? `<div class="dp-demo-ph"><span class="ph-emoji">${d.heroEmoji}</span>Demo 链接即将添加</div>`
-               : `<iframe src="${d.demoUrl}" title="${d.name}" allowfullscreen loading="lazy"></iframe>`}
-           </section>` : '';
-
-      // Section 3 — Long images: each picture full-width, zero gap (seamless).
-      //   data field: d.longImages = ['assets/long/01.jpg', ...]
+      // Special view: any IP-illustration sticker opens the unified IP page.
+      if (d && d.kind === 'illustration-ip') return renderIpModal();
+      // ── Default view: a project page (gallery + demo + long images) ──
+      const hasDemo = d.demoType === 'iframe'
+        && d.demoUrl
+        && !String(d.demoUrl).startsWith('PLACEHOLDER');
+      const isPhone = d.demoAspect === 'phone';
+      const demo = hasDemo
+        ? `<section class="dp-demo${isPhone ? ' dp-demo-phone' : ''}">
+             <iframe src="${d.demoUrl}" title="${d.name}"
+                     allowfullscreen loading="lazy"
+                     referrerpolicy="no-referrer-when-downgrade"></iframe>
+           </section>`
+        : '';
       const longs = (Array.isArray(d.longImages) && d.longImages.length)
         ? `<section class="dp-long">
-             ${d.longImages.map(src => `<img src="${src}" alt="${d.name}" loading="lazy" />`).join('')}
-           </section>` : '';
+             ${d.longImages.map(src =>
+               `<img src="${src}" alt="${d.name}" loading="lazy" />`).join('')}
+           </section>`
+        : '';
+      if (!hasDemo && !longs) {
+        return `<div class="dp-empty">「${d.name}」内容尚未上传</div>`;
+      }
+      return `${demo}${longs}`;
+    }
 
-      const tags = d.tags.map(t => `<span class="badge badge-${d.category}">${t}</span>`).join('');
-      const metrics = d.metrics.length
-        ? `<div class="dp-metrics">
-             ${d.metrics.map(m => `
-               <div class="dp-metric">
-                 <span class="dp-metric-val">${m.value}</span>
-                 <span class="dp-metric-lbl">${m.label}</span>
-               </div>`).join('')}
-           </div>` : '';
-      const paras = d.description.split(/\n\s*\n/).map(p => `<p>${p}</p>`).join('');
+    // Build the unified IP / illustration detail page from the manifest.
+    function renderIpModal() {
+      const m = window.__ipManifest || { ips: [] };
+      // First screen: every IP sticker scattered across the viewport.
+      // Positions/rotations are computed in CSS via custom properties so JS
+      // doesn't have to reflow on resize.
+      const allStickers = [];
+      for (const ip of m.ips) {
+        for (const src of ip.stickers) allStickers.push({ src, ip: ip.name });
+      }
+      const total = allStickers.length;
+      const flyHtml = allStickers.map((s, i) => {
+        // pseudo-random but stable per-index (avoids reshuffling each render)
+        const seed = (i * 2654435761) >>> 0;       // Knuth multiplicative
+        const r1 = ((seed >>> 0)  % 1000) / 1000;  // [0,1)
+        const r2 = ((seed >>> 9)  % 1000) / 1000;
+        const r3 = ((seed >>> 17) % 1000) / 1000;
+        // Spread within 8%-92% of viewport, slight tilt, uniform size
+        const left = (6 + r1 * 86).toFixed(1);
+        const top  = (8 + r2 * 78).toFixed(1);
+        const rot  = ((r3 - 0.5) * 30).toFixed(1);
+        const sz   = 130;                            // uniform — no big/small mix
+        const delay = (i * 28).toFixed(0);           // staggered entrance
+        return `<img class="ip-fly" src="${encodeURI(s.src)}" alt="${s.ip}"
+          data-rot="${rot}"
+          style="--l:${left}%; --t:${top}%; --r:${rot}deg; --sz:${sz}px;
+                 --delay:${delay}ms;" loading="lazy" draggable="false" />`;
+      }).join('');
+
+      // Following screens: each long image on its own full-viewport page,
+      // contained with padding so we always see the full picture.
+      const pages = [];
+      for (const ip of m.ips) {
+        for (const img of (ip.longImages || [])) {
+          pages.push(`<section class="ip-page">
+                        <img src="${encodeURI(img)}" alt="${ip.name}" loading="lazy" />
+                      </section>`);
+        }
+      }
 
       return `
-        ${gallery}
-        <header class="dp-header">
-          <div class="dp-tags">${tags}</div>
-          <h1 class="dp-title">${d.name}</h1>
-          <p class="dp-meta">${d.role} · ${d.period}</p>
-          ${metrics}
-          <div class="dp-desc">${paras}</div>
-        </header>
-        ${demoBlock}
-        ${longs}`;
+        <section class="ip-hero">
+          <div class="ip-hero-stage">${flyHtml}</div>
+          <div class="ip-hero-hint">下滑查看插画 ↓</div>
+        </section>
+        ${pages.join('')}`;
     }
     function openModal(d) {
       currentModal = d;
       document.getElementById('modal-slot').innerHTML = renderModal(d);
+      const isIp = d && d.kind === 'illustration-ip';
+      overlay.classList.toggle('ip-mode', isIp);
+      document.body.classList.toggle('ip-modal', isIp);
       overlay.classList.add('open');
       document.body.classList.add('modal-open');
       document.body.style.overflow = 'hidden';
       if (window.__room) window.__room.pause();
       initCarousel();
+      if (isIp) enableIpDrag();
     }
     function closeModal() {
       overlay.classList.remove('open');
+      overlay.classList.remove('ip-mode');
       document.body.classList.remove('modal-open');
+      document.body.classList.remove('ip-modal');
       document.body.style.overflow = '';
       if (window.__room && !track.classList.contains('show-cv')) window.__room.resume();
       currentModal = null;
+    }
+
+    // Hero stickers on the IP detail page are draggable, clamped within the
+    // hero stage. We listen on document during an active drag so the modal's
+    // overflow:auto can't hijack vertical motion as a scroll gesture, and so
+    // the drag keeps tracking when the cursor leaves the sticker itself.
+    function enableIpDrag() {
+      const stage = document.querySelector('.ip-hero-stage');
+      if (!stage) return;
+      stage.querySelectorAll('.ip-fly').forEach(el => {
+        let sx = 0, sy = 0, baseLeft = 0, baseTop = 0, activeId = null;
+        const rot = parseFloat(el.dataset.rot || '0');
+
+        const onMove = (e) => {
+          if (e.pointerId !== activeId) return;
+          e.preventDefault();
+          const r = stage.getBoundingClientRect();
+          let nx = baseLeft + (e.clientX - sx);
+          let ny = baseTop  + (e.clientY - sy);
+          const halfW = el.offsetWidth  / 2;
+          const halfH = el.offsetHeight / 2;
+          nx = Math.max(halfW, Math.min(r.width  - halfW, nx));
+          ny = Math.max(halfH, Math.min(r.height - halfH, ny));
+          el.style.left = nx + 'px';
+          el.style.top  = ny + 'px';
+        };
+        const onEnd = (e) => {
+          if (e.pointerId !== activeId) return;
+          activeId = null;
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup', onEnd);
+          document.removeEventListener('pointercancel', onEnd);
+        };
+
+        el.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          activeId = e.pointerId;
+          const r = stage.getBoundingClientRect();
+          const er = el.getBoundingClientRect();
+          baseLeft = er.left + er.width  / 2 - r.left;
+          baseTop  = er.top  + er.height / 2 - r.top;
+          sx = e.clientX; sy = e.clientY;
+          // Freeze the fly-in animation at its final pose and switch to px.
+          el.style.animation = 'none';
+          el.style.opacity   = '1';
+          el.style.transform = `translate(-50%, -50%) rotate(${rot}deg)`;
+          el.style.left = baseLeft + 'px';
+          el.style.top  = baseTop  + 'px';
+          el.style.zIndex = String((Date.now() % 100000) + 10);
+          document.addEventListener('pointermove', onMove, { passive: false });
+          document.addEventListener('pointerup', onEnd);
+          document.addEventListener('pointercancel', onEnd);
+        });
+      });
     }
 
     function initCarousel() {
@@ -342,8 +423,9 @@
         if (Math.abs(dx) > 40) go(i + (dx < 0 ? 1 : -1));
       });
     }    overlay.addEventListener('click', e => {
-      if (e.target === overlay || e.target.classList.contains('modal-close-btn')) closeModal();
+      if (e.target === overlay) closeModal();
     });
+    document.querySelector('.modal-close-btn').addEventListener('click', closeModal);
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && currentModal) closeModal(); });
     window.__modalApi = { open: openModal, close: closeModal };
 
@@ -418,11 +500,7 @@
       }).catch(() => { hint.textContent = '15575824630'; });
     });
 
-    // drag hint auto-hide
-    setTimeout(() => {
-      const h = document.querySelector('.drag-hint');
-      if (h) { h.style.transition = 'opacity 1s'; h.style.opacity = '0'; }
-    }, 5000);
+
   </script>
 
   <!-- 3D room (module) -->
@@ -430,7 +508,63 @@
     import { initRoom, addStickers, applyFilter, resetStickers, pause, resume } from './js/room3d.js';
     const container = document.getElementById('room-canvas');
     initRoom({ container, modalApi: window.__modalApi });
-    addStickers(window.STICKERS_DATA);
+
+    // Load the IP-asset manifest, expand each sticker PNG into a synthetic
+    // sticker-data entry (kind='illustration-ip'), and add them alongside the
+    // hand-written STICKERS_DATA so they share the same cylinder placement.
+    // Display labels for IP folder names. The manifest only has the folder
+    // slug (e.g. "tianjin"); use this map to show a real name on hover. Add
+    // entries here as new IPs go into assets/stickers/ip stickers/.
+    const IP_LABELS = {
+      tianjin: '天津跳水队',
+    };
+
+    async function loadIpStickers() {
+      try {
+        const r = await fetch('assets/ip-manifest.json', { cache: 'no-cache' });
+        if (!r.ok) return [];
+        const m = await r.json();
+        // Cylinder shows just a teaser per IP — 2–3 random stickers, not the
+        // full set. The detail page still draws every sticker from the manifest.
+        const out = [];
+        for (const ip of (m.ips || [])) {
+          const pool = ip.stickers.slice();
+          // Fisher-Yates shuffle
+          for (let k = pool.length - 1; k > 0; k--) {
+            const j = Math.floor(Math.random() * (k + 1));
+            [pool[k], pool[j]] = [pool[j], pool[k]];
+          }
+          const pickCount = Math.min(pool.length, 2 + Math.floor(Math.random() * 2)); // 2 or 3
+          const label = IP_LABELS[ip.name] || ip.name;
+          for (let i = 0; i < pickCount; i++) {
+            out.push({
+              id: `ip-${ip.name}-${i}`,
+              kind: 'illustration-ip',     // tells modal to use the IP detail page
+              category: 'illus',
+              ipName: ip.name,             // which IP family this belongs to
+              name: label,                 // shown in the hover tag
+              sticker: encodeURI(pool[i]),
+              tags: [], metrics: [], description: '',
+              role: '', period: '', heroEmoji: '✨',
+              demoType: null, demoUrl: null,
+              size: 'tiny',
+              ix: Math.random(), iy: Math.random(), rot: 0,
+            });
+          }
+        }
+        // Provide manifest to the modal so the detail page can render all IPs.
+        window.__ipManifest = m;
+        return out;
+      } catch (e) {
+        console.warn('IP manifest failed:', e);
+        return [];
+      }
+    }
+    (async () => {
+      const ipItems = await loadIpStickers();
+      addStickers([...(window.STICKERS_DATA || []), ...ipItems]);
+    })();
+
     window.__room = { applyFilter, resetStickers, pause, resume };
   </script>
 </body>

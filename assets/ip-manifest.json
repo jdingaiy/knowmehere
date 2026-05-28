@@ -1,0 +1,25 @@
+{
+  "ips": [
+    {
+      "name": "tianjin",
+      "stickers": [
+        "assets/stickers/ip stickers/tianjin/img_v3_02hj_02cce114-ee81-47f5-9979-3e12e3df496g 1.png",
+        "assets/stickers/ip stickers/tianjin/img_v3_02hj_02cce114-ee81-47f5-9979-3e12e3df496g 3.png",
+        "assets/stickers/ip stickers/tianjin/img_v3_02hj_02cce114-ee81-47f5-9979-3e12e3df496g 4.png",
+        "assets/stickers/ip stickers/tianjin/img_v3_02hj_02cce114-ee81-47f5-9979-3e12e3df496g 5.png",
+        "assets/stickers/ip stickers/tianjin/img_v3_02hj_02cce114-ee81-47f5-9979-3e12e3df496g 6.png",
+        "assets/stickers/ip stickers/tianjin/img_v3_02hj_02cce114-ee81-47f5-9979-3e12e3df496g 7.png",
+        "assets/stickers/ip stickers/tianjin/img_v3_02hj_02cce114-ee81-47f5-9979-3e12e3df496g 8.png",
+        "assets/stickers/ip stickers/tianjin/img_v3_02hj_02cce114-ee81-47f5-9979-3e12e3df496g 9.png",
+        "assets/stickers/ip stickers/tianjin/img_v3_02hj_02cce114-ee81-47f5-9979-3e12e3df496g 10.png",
+        "assets/stickers/ip stickers/tianjin/img_v3_02hj_02cce114-ee81-47f5-9979-3e12e3df496g 11.png",
+        "assets/stickers/ip stickers/tianjin/img_v3_02hj_02cce114-ee81-47f5-9979-3e12e3df496g 12.png",
+        "assets/stickers/ip stickers/tianjin/img_v3_02hj_02cce114-ee81-47f5-9979-3e12e3df496g 13.png"
+      ],
+      "longImages": [
+        "assets/projects/ip/tianjin/tianjin1.jpg",
+        "assets/projects/ip/tianjin/tianjin2.jpg"
+      ]
+    }
+  ]
+}

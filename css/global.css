@@ -180,16 +180,14 @@ body { font-family: var(--font); background: var(--white); color: var(--ink); ov
   width: 100%;
   max-width: 1100px;
   margin: 0 auto;
-  padding: 80px 40px 100px;
+  padding: 0;
   display: flex; flex-direction: column;
-  gap: 60px;
+  gap: 0;
   transform: translateY(20px);
   transition: transform 0.42s cubic-bezier(0.22,0.61,0.36,1);
 }
 .modal-overlay.open .modal-box { transform: translateY(0); }
-@media (max-width: 720px) {
-  .modal-box { padding: 70px 16px 80px; gap: 36px; }
-}
+
 
 /* close button — pure glass, no border */
 .modal-close-btn {
@@ -208,7 +206,8 @@ body { font-family: var(--font); background: var(--white); color: var(--ink); ov
   z-index: 850;
   opacity: 0; pointer-events: none;
 }
-.modal-overlay.open .modal-close-btn { opacity: 1; pointer-events: auto; }
+.modal-overlay.open .modal-close-btn,
+body.modal-open .modal-close-btn { opacity: 1; pointer-events: auto; }
 .modal-close-btn:hover { background: rgba(255,255,255,0.85); }
 
 .modal-topbar { display: none; }
@@ -309,13 +308,48 @@ body { font-family: var(--font); background: var(--white); color: var(--ink); ov
   .gal-prev { left: 8px; } .gal-next { right: 8px; }
 }
 
-/* ── DEMO: bare iframe block, no card frame ── */
+/* ── DEMO: rounded centered iframe ── */
+.dp-demo {
+  display: flex; justify-content: center;
+  padding: 40px 32px;
+  width: 100%;
+}
 .dp-demo iframe {
   display: block;
   width: 100%;
-  height: 80vh;
+  max-width: 1200px;
+  height: 78vh;
   border: none;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(60,55,50,0.16);
   background: var(--off);
+}
+@media (max-width: 720px) {
+  .dp-demo { padding: 24px 14px; }
+  .dp-demo iframe { height: 70vh; border-radius: 14px; }
+}
+
+/* Phone-aspect demo: set demoAspect:'phone' on the sticker data entry to
+   render the iframe inside a phone-shaped frame instead of the default
+   wide rectangle. Used for mobile-only product demos. */
+.dp-demo.dp-demo-phone { padding: 40px 20px; }
+.dp-demo.dp-demo-phone iframe {
+  width: min(390px, 92vw);
+  height: min(844px, 85vh);
+  max-width: none;
+  border: 12px solid #1a1814;
+  border-radius: 44px;
+  background: #000;
+  box-shadow: 0 30px 80px rgba(60,55,50,0.22),
+              0 0 0 2px rgba(0,0,0,0.06);
+}
+@media (max-width: 720px) {
+  .dp-demo.dp-demo-phone { padding: 24px 12px; }
+  .dp-demo.dp-demo-phone iframe {
+    border-width: 8px;
+    border-radius: 32px;
+  }
 }
 .dp-demo-ph {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -361,4 +395,96 @@ body.modal-open .sticker-tag {
   transition: opacity 0.25s ease;
 }
 
+/* IP detail page keeps the cylinder visible behind a frosted blur. We put
+   the blur on the (viewport-fixed) modal-overlay itself so it stays as ONE
+   continuous frosted layer through the entire scroll — no per-page seams. */
+.modal-overlay.ip-mode {
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(26px) saturate(140%);
+  -webkit-backdrop-filter: blur(26px) saturate(140%);
+}
+body.modal-open.ip-modal .room-canvas {
+  display: block;
+  pointer-events: none;
+  /* Light CSS blur as a fallback for browsers without backdrop-filter */
+  filter: blur(6px) saturate(0.95);
+}
+
 body.modal-open .room-canvas { display: none; }
+
+.dp-empty {
+  padding: 30vh 32px;
+  text-align: center;
+  font-size: 14px; color: var(--ink-3);
+}
+/* ─── IP / illustration detail page ─── */
+/* .ip-hero and .ip-page are transparent — the unified blur lives on
+   .modal-overlay.ip-mode so it doesn't break per page. */
+.ip-hero {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+}
+.ip-hero-stage { position: absolute; inset: 0; }
+.ip-hero-hint {
+  position: absolute;
+  bottom: 28px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px; letter-spacing: 2px;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  animation: ip-hint 2s ease-in-out infinite;
+}
+@keyframes ip-hint {
+  0%, 100% { opacity: 0.35; transform: translate(-50%, 0); }
+  50%      { opacity: 0.8;  transform: translate(-50%, 4px); }
+}
+
+/* Each IP sticker "flies" from invisible centred to its scattered slot */
+.ip-fly {
+  position: absolute;
+  left: var(--l); top: var(--t);
+  width: var(--sz); height: var(--sz);
+  object-fit: contain;
+  transform: translate(-50%, -50%) scale(0.3) rotate(0deg);
+  opacity: 0;
+  filter: drop-shadow(0 8px 18px rgba(60, 55, 50, 0.18));
+  animation: ip-fly-in 0.9s cubic-bezier(0.22, 1.16, 0.36, 1) forwards;
+  animation-delay: var(--delay);
+  will-change: transform, opacity, left, top;
+  user-select: none;
+  -webkit-user-drag: none;
+  cursor: grab;
+  touch-action: none;
+}
+.ip-fly:active { cursor: grabbing; }
+@keyframes ip-fly-in {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(0deg); }
+  60%  { opacity: 1; transform: translate(-50%, -50%) scale(1.12) rotate(calc(var(--r) * 0.6)); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1)    rotate(var(--r)); }
+}
+
+/* One illustration per viewport, contained with breathing-room padding.
+   Transparent — the unified blur sits on .modal-overlay.ip-mode, so the
+   cylinder behind stays uniformly blurred across hero + every long-image
+   page with no seam at the page boundary. */
+.ip-page {
+  width: 100%;
+  height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 6vh 6vw;
+  box-sizing: border-box;
+  background: transparent;
+}
+.ip-page img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto; height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+}
+@media (max-width: 720px) {
+  .ip-page { padding: 4vh 4vw; }
+}
