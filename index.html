@@ -8,6 +8,14 @@
   <link rel="stylesheet" href="css/global.css" />
   <link rel="stylesheet" href="css/board.css" />
   <link rel="stylesheet" href="css/pages.css" />
+  <!-- Preload critical assets in parallel with the HTML parse so the
+       cylinder appears as soon as the JS runs. -->
+  <link rel="preload" as="image"
+        href="assets/texture/gravel_embedded_concrete_2k.blend/textures/gravel_embedded_concrete_diff_2k.jpg" />
+  <link rel="preload" as="fetch" crossorigin
+        href="assets/ip-manifest.json" />
+  <link rel="modulepreload" href="js/room3d.js" />
+  <link rel="preload" as="script" href="js/stickers-data.js" />
   <script type="importmap">
   { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
   </script>
@@ -15,7 +23,9 @@
 <body>
 
   <!-- ── LOGO (fixed, global) ── -->
-  <a href="#works" class="ui-logo" id="site-logo" data-panel="works" aria-label="首页">谭<span>.</span></a>
+  <a href="#works" class="ui-logo" id="site-logo" data-panel="works" aria-label="首页">
+    <img src="assets/logo.svg" alt="谭加奇" />
+  </a>
 
   <!-- ── Right pill — filter on works, download on cv ── -->
   <button class="ui-pill ui-pill-right" id="filter-btn" aria-haspopup="listbox" aria-expanded="false">
@@ -252,6 +262,10 @@
              <iframe src="${d.demoUrl}" title="${d.name}"
                      allowfullscreen loading="lazy"
                      referrerpolicy="no-referrer-when-downgrade"></iframe>
+             <a class="dp-demo-external" href="${d.demoUrl}"
+                target="_blank" rel="noopener">
+               加载不出来？在新标签页打开 ↗
+             </a>
            </section>`
         : '';
       const longs = (Array.isArray(d.longImages) && d.longImages.length)
@@ -312,11 +326,19 @@
       currentModal = d;
       document.getElementById('modal-slot').innerHTML = renderModal(d);
       const isIp = d && d.kind === 'illustration-ip';
-      overlay.classList.toggle('ip-mode', isIp);
-      document.body.classList.toggle('ip-modal', isIp);
+      const hasDemo = d && d.demoType === 'iframe' && d.demoUrl
+        && !String(d.demoUrl).startsWith('PLACEHOLDER');
+      // ip-mode and demo-mode share the same frosted-glass treatment: the
+      // overlay goes transparent and the blurred cylinder stays visible.
+      const frosted = isIp || hasDemo;
+      overlay.classList.toggle('ip-mode', frosted);
+      document.body.classList.toggle('ip-modal', frosted);
       overlay.classList.add('open');
       document.body.classList.add('modal-open');
       document.body.style.overflow = 'hidden';
+      // Always start each detail page from the top — don't inherit the
+      // scroll position of whichever modal was opened previously.
+      overlay.scrollTop = 0;
       if (window.__room) window.__room.pause();
       initCarousel();
       if (isIp) enableIpDrag();

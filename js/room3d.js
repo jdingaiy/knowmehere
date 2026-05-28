@@ -87,21 +87,30 @@ const texLoader = new THREE.TextureLoader();
 
 /* ---------- pole: real PBR-ish material with a fixed light ---------- */
 const POLE_TEX = 'assets/texture/gravel_embedded_concrete_2k.blend/textures/gravel_embedded_concrete_diff_2k.jpg';
-const poleTex = texLoader.load(POLE_TEX, renderOnce, undefined,
-  (err) => console.error('[room3d] pole texture failed:', POLE_TEX, err));
-poleTex.colorSpace = THREE.SRGBColorSpace;
-poleTex.wrapS = THREE.RepeatWrapping;
-poleTex.wrapT = THREE.RepeatWrapping;
-poleTex.anisotropy = 8;
-// Tile so each repetition is roughly square in world units. Circumference is
-// 2*pi*radius ≈ 26.4, height 44; aim for ~4 world-unit tiles -> 6.6 × 11.
-poleTex.repeat.set(6.6, 11);
 
 const poleMat = new THREE.MeshStandardMaterial({
-  map: poleTex,
+  // Until the texture finishes downloading we render a flat warm-gray pole
+  // so visitors see "loading concrete" rather than a stark black silhouette
+  // (which is what an untextured StandardMaterial defaults to).
+  color: 0xb8b3ad,
+  map: null,
   roughness: 0.95,
   metalness: 0.0,
 });
+// Swap the diffuse map in once it's ready, then trigger a re-render.
+texLoader.load(POLE_TEX, (loaded) => {
+  loaded.colorSpace = THREE.SRGBColorSpace;
+  loaded.wrapS = THREE.RepeatWrapping;
+  loaded.wrapT = THREE.RepeatWrapping;
+  loaded.anisotropy = 8;
+  // Tile so each repetition is roughly square in world units. Circumference
+  // is 2*pi*radius ≈ 26.4, height 44; aim for ~4 world-unit tiles -> 6.6 × 11.
+  loaded.repeat.set(6.6, 11);
+  poleMat.map = loaded;
+  poleMat.color.set(0xffffff);   // restore neutral tint so map shows true colour
+  poleMat.needsUpdate = true;
+  renderOnce();
+}, undefined, (err) => console.error('[room3d] pole texture failed:', POLE_TEX, err));
 
 /* ---------- sticker shader: white-key + dilated white die-cut border ---------- */
 const stickerVert = `
@@ -395,11 +404,15 @@ export function addStickers(list) {
     // so they read as sticker cards instead of raw screenshots. Other entries
     // are PNGs with their own die-cut alpha and don't want any extra clip.
     const cornerR = (d && d.ipName === 'ciji') ? 0.08 : 0.0;
+    // Outline reads as a faint highlight; shrink it on narrow viewports
+    // where stickers already take less screen space.
+    const isPhone = (container.clientWidth || window.innerWidth) < 720;
+    const borderPx = isPhone ? 3.5 : 6.0;
 
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         map:      { value: tex },
-        borderPx: { value: 6.0 },          // outline width in screen pixels
+        borderPx: { value: borderPx },     // outline width in screen pixels
         cornerR:  { value: cornerR },
       },
       vertexShader: stickerVert, fragmentShader: stickerFrag,
@@ -437,32 +450,51 @@ export function addStickers(list) {
     stickers.push({ mesh, shMesh, data: d, theta, y, S, lift: 0.005, aspect: 1 });
   });
   // Aim the camera at whichever side of the pole has the most stickers, so
-  // the first paint never lands on an empty back. We sweep the circle in
-  // 5-degree steps and score each candidate angle by how many stickers fall
-  // within a ±90° front-arc around it.
-  if (stickers.length) {
-    const STEPS = 72, HALF = Math.PI / 2;
-    let bestAngle = 0, bestScore = -1;
-    for (let k = 0; k < STEPS; k++) {
-      const a = (k / STEPS) * 2 * Math.PI - Math.PI;
-      let score = 0;
-      for (const s of stickers) {
-        let d2 = s.theta - a;
-        while (d2 >  Math.PI) d2 -= 2 * Math.PI;
-        while (d2 < -Math.PI) d2 += 2 * Math.PI;
-        if (Math.abs(d2) <= HALF) score++;
-      }
-      if (score > bestScore) { bestScore = score; bestAngle = a; }
-    }
-    cameraAngle = bestAngle;
+  // the first paint never lands on an empty back. Also pan vertically to
+  // their centre so the cluster lands in the middle of the viewport.
+  const best = densestPose();
+  if (best) {
+    cameraAngle = best.angle;
+    const safe = (typeof container !== 'undefined' && container)
+      ? safeViewYRange() : CFG.viewYRange;
+    viewY = clamp(best.y, -safe, safe);
   }
   renderOnce();
 }
 
+// Find the camera angle whose ±90° front-arc covers the most stickers, and
+// the average y of those stickers (so the camera also pans to their vertical
+// centre, not just their azimuth). Used for first-paint orientation and for
+// the double-tap "find stickers" gesture. Returns null when there are no
+// stickers yet.
+function densestPose() {
+  if (!stickers.length) return null;
+  const STEPS = 72, HALF = Math.PI / 2;
+  let bestAngle = 0, bestScore = -1, bestY = 0;
+  for (let k = 0; k < STEPS; k++) {
+    const a = (k / STEPS) * 2 * Math.PI - Math.PI;
+    let score = 0, ySum = 0;
+    for (const s of stickers) {
+      let d2 = s.theta - a;
+      while (d2 >  Math.PI) d2 -= 2 * Math.PI;
+      while (d2 < -Math.PI) d2 += 2 * Math.PI;
+      if (Math.abs(d2) <= HALF) { score++; ySum += s.y; }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestAngle = a;
+      bestY = score > 0 ? ySum / score : 0;
+    }
+  }
+  return { angle: bestAngle, y: bestY };
+}
+
 // Default placement.
 //   IP stickers — scattered across the full circle (including the back of the
-//     pole) and a wide vertical band, seeded by per-sticker randoms baked into
-//     the manifest entries so positions stay stable between renders.
+//     pole) and a centred vertical band so they cluster around eye-level
+//     instead of being thrown the full pan range; seeded by per-sticker
+//     randoms baked into the manifest entries so positions stay stable
+//     between renders.
 //   Project stickers — a wider front-half arc + staggered heights so they
 //     read as a loose grid rather than a tight column.
 function defaultLayout(d, i) {
@@ -470,7 +502,9 @@ function defaultLayout(d, i) {
     const ix = (typeof d.ix === 'number') ? d.ix : Math.random();
     const iy = (typeof d.iy === 'number') ? d.iy : Math.random();
     const theta = (ix * 2 - 1) * Math.PI;            // -π..π (full circle)
-    const y     = (iy * 2 - 1) * CFG.viewYRange;     // within explorable range
+    // Half of viewYRange keeps every IP teaser visible from the default
+    // camera height — users don't need to pan to find them.
+    const y     = (iy * 2 - 1) * (CFG.viewYRange * 0.5);
     return { theta, y };
   }
   const cols = 3;
@@ -552,6 +586,8 @@ function syncFlatToView() {
   }
 }
 /* ============ INTERACTION ============ */
+let lastTapAt = 0;     // for double-tap detection on empty space
+let rotateMoved = false;
 function bindEvents() {
   const el = renderer.domElement;
   el.addEventListener('pointerdown', onDown);
@@ -628,6 +664,7 @@ function onDown(e) {
     return;
   }
   // empty space (or click landed on the pole / back-side sticker) -> spin & pan
+  rotateMoved = false;
   rotating = { startX: e.clientX, startY: e.clientY, baseRot: cameraAngle, baseY: viewY, touch: (e.pointerType === 'touch') };
 }
 function onMove(e) {
@@ -635,10 +672,13 @@ function onMove(e) {
   if (rotating) {
     const dx = e.clientX - rotating.startX;
     const dy = e.clientY - rotating.startY;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) rotateMoved = true;
     cameraAngle = rotating.baseRot - (dx / window.innerWidth) * Math.PI * 2;
-    if (!rotating.touch) {
-      viewY = clamp(rotating.baseY - dy * 0.025, -CFG.viewYRange, CFG.viewYRange);
-    }
+    // Vertical pan works for both mouse and touch — baseCam() clamps viewY
+    // to the safe range so the pole's caps stay out of frame. Touch needs a
+    // higher gain because finger travel is shorter than mouse travel.
+    const gain = rotating.touch ? 0.045 : 0.025;
+    viewY = clamp(rotating.baseY - dy * gain, -CFG.viewYRange, CFG.viewYRange);
     return;
   }
   if (!dragging) return;
@@ -677,7 +717,27 @@ function onMove(e) {
 }
 function onUp(e) {
   try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (err) {}
-  if (rotating) { rotating = null; return; }
+  if (rotating) {
+    const wasTap = !rotateMoved;
+    rotating = null;
+    // Double-tap on empty space -> spin and pan to the densest sticker cluster.
+    if (wasTap) {
+      const now = performance.now();
+      if (now - lastTapAt < 350) {
+        lastTapAt = 0;
+        const target = densestPose();
+        if (target) {
+          const safe = safeViewYRange();
+          const targetY = clamp(target.y, -safe, safe);
+          tweenCameraAngle(target.angle, 520);
+          tweenViewY(targetY, 520);
+        }
+      } else {
+        lastTapAt = now;
+      }
+    }
+    return;
+  }
   if (!dragging) return;
   if (dragMoved) savePos(dragging.data.id, dragging.theta, dragging.y);
   else if (modalApi && modalApi.open) modalApi.open(dragging.data);

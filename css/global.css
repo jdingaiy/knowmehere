@@ -24,8 +24,32 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { -webkit-font-smoothing: antialiased; }
-body { font-family: var(--font); background: var(--white); color: var(--ink); overflow: hidden; }
+html {
+  -webkit-font-smoothing: antialiased;
+  /* Lock the page from any touch panning — the 3D canvas handles its own
+     gestures, and letting the page scroll/bounce vertically while dragging
+     a sticker pulls the viewport with it on mobile. */
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+body {
+  font-family: var(--font);
+  background: var(--white);
+  color: var(--ink);
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+/* Modal opens its own scrollable surface — let touch panning work INSIDE
+   the overlay even though the page itself is locked. */
+.modal-overlay {
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
 
 /* ─── FIXED UI SHELL ─── */
 
@@ -40,17 +64,18 @@ body { font-family: var(--font); background: var(--white); color: var(--ink); ov
   text-decoration: none;
   letter-spacing: -0.5px;
   width: 44px; height: 44px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.45);
-  border: none;
   display: flex; align-items: center; justify-content: center;
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  box-shadow: 0 4px 18px rgba(60,55,50,0.10);
-  transition: background 0.18s ease, box-shadow 0.18s ease;
+  transition: transform 0.18s ease, opacity 0.18s ease;
 }
-.ui-logo:hover { background: rgba(255,255,255,0.62); box-shadow: 0 6px 22px rgba(60,55,50,0.14); }
+.ui-logo:hover { transform: scale(1.06); }
 .ui-logo span  { color: var(--accent); }
+.ui-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;       /* clicks reach the parent anchor */
+  -webkit-user-drag: none;
+}
 
 /* Pill button — shared style for filter + info buttons */
 .ui-pill {
@@ -309,10 +334,14 @@ body.modal-open .modal-close-btn { opacity: 1; pointer-events: auto; }
 }
 
 /* ── DEMO: rounded centered iframe ── */
+/* ── DEMO: centered iframe, no white card ── */
 .dp-demo {
-  display: flex; justify-content: center;
-  padding: 40px 32px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px;
+  padding: 0 32px;
   width: 100%;
+  min-height: 100vh;          /* vertically centre the demo in the viewport */
+  box-sizing: border-box;
 }
 .dp-demo iframe {
   display: block;
@@ -323,33 +352,40 @@ body.modal-open .modal-close-btn { opacity: 1; pointer-events: auto; }
   border-radius: 18px;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(60,55,50,0.16);
-  background: var(--off);
+  background: transparent;    /* let the frosted backdrop show through */
 }
+.dp-demo-external {
+  font-size: 12px;
+  color: var(--ink-3);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 100px;
+  background: rgba(255,255,255,0.55);
+  backdrop-filter: blur(10px) saturate(150%);
+  -webkit-backdrop-filter: blur(10px) saturate(150%);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.dp-demo-external:hover { background: rgba(255,255,255,0.85); color: var(--ink); }
 @media (max-width: 720px) {
-  .dp-demo { padding: 24px 14px; }
+  .dp-demo { padding: 0 14px; }
   .dp-demo iframe { height: 70vh; border-radius: 14px; }
 }
 
 /* Phone-aspect demo: set demoAspect:'phone' on the sticker data entry to
-   render the iframe inside a phone-shaped frame instead of the default
-   wide rectangle. Used for mobile-only product demos. */
-.dp-demo.dp-demo-phone { padding: 40px 20px; }
+   render the iframe inside a phone-shaped frame. No hard border — just
+   rounded corners + soft shadow so it reads as a hovering screenshot. */
 .dp-demo.dp-demo-phone iframe {
-  width: min(390px, 92vw);
-  height: min(844px, 85vh);
+  width: min(390px, 88vw);
+  height: min(844px, 80vh);
   max-width: none;
-  border: 12px solid #1a1814;
-  border-radius: 44px;
-  background: #000;
-  box-shadow: 0 30px 80px rgba(60,55,50,0.22),
-              0 0 0 2px rgba(0,0,0,0.06);
+  border: none;
+  border-radius: 36px;
+  background: transparent;
+  box-shadow: 0 28px 70px rgba(60,55,50,0.22),
+              0 6px 18px rgba(60,55,50,0.10);
 }
 @media (max-width: 720px) {
-  .dp-demo.dp-demo-phone { padding: 24px 12px; }
-  .dp-demo.dp-demo-phone iframe {
-    border-width: 8px;
-    border-radius: 32px;
-  }
+  .dp-demo.dp-demo-phone iframe { border-radius: 28px; }
 }
 .dp-demo-ph {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
