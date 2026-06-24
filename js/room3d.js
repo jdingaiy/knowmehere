@@ -162,11 +162,8 @@ const stickerFrag = `
     }
     float outA = max(c.a, border);
     if (outA < 0.005) discard;
-    // Continuous blend: at high c.a -> artwork; at c.a=0 (in the dilated ring)
-    // -> the top-biased white outline. No hard branch -> no jaggies on the
-    // alpha boundary.
-    float topLight = mix(0.88, 1.0, clamp(1.0 - vUv.y, 0.0, 1.0));
-    vec3 col = mix(vec3(topLight), c.rgb, c.a);
+    // Outline is always pure white — no grey gradient, clean sticker die-cut.
+    vec3 col = mix(vec3(1.0), c.rgb, c.a);
     gl_FragColor = vec4(col, outA);
   }
 `;
@@ -405,14 +402,13 @@ export function addStickers(list) {
     tex.magFilter = THREE.LinearFilter;
     tex.anisotropy = 16;
 
-    // Some IPs (ciji) are square photo crops — give them a rounded-rect mask
-    // so they read as sticker cards instead of raw screenshots. Other entries
-    // are PNGs with their own die-cut alpha and don't want any extra clip.
-    const cornerR = (d && d.ipName === 'ciji') ? 0.08 : 0.0;
-    // Outline reads as a faint highlight; shrink it on narrow viewports
-    // where stickers already take less screen space.
+    // Give all stickers a uniform rounded-rect corner — ciji gets a larger
+    // radius because it's a square photo crop; all other PNGs get a subtle
+    // rounding so even square-ish artwork reads as a die-cut sticker card.
+    const cornerR = (d && d.ipName === 'ciji') ? 0.08 : 0.06;
+    // Outline width in screen pixels; shrink on narrow viewports.
     const isPhone = (container.clientWidth || window.innerWidth) < 720;
-    const borderPx = isPhone ? 3.5 : 6.0;
+    const borderPx = isPhone ? 4.0 : 7.0;
 
     const mat = new THREE.ShaderMaterial({
       uniforms: {
