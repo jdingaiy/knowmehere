@@ -169,7 +169,7 @@ const STICKERS_DATA = [
     ],
     heroEmoji: '📅',
     ix: 0.44, iy: 0.32, rot: -5,
-    size: 'small',
+    size: 'tiny',
   },
 
   // ── STUDIO ─────────────────────────────────────
