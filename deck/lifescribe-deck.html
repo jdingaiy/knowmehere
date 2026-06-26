@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>生活印诗机 · Case Study</title>
+<link rel="preconnect" href="https://fonts.loli.net">
+<link rel="preconnect" href="https://gstatic.loli.net" crossorigin>
+<link href="https://fonts.loli.net/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Noto+Serif+SC:wght@400;500;600;700;900&family=Noto+Sans+SC:wght@300;400;500;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1a1a18;            /* near-black */
+    --ink-2:#46443e;          /* body grey */
+    --ink-3:#8a8780;          /* muted */
+    --line:#dcd8cf;           /* hairline */
+    --paper:#f3efe6;          /* warm paper */
+    --paper-2:#eae4d7;        /* deeper paper */
+    --card:#e6e0d3;           /* placeholder fill */
+    --accent:#c85a28;         /* brick orange */
+    --serif:'Noto Serif SC','Fraunces',serif;
+    --serif-en:'Fraunces','Noto Serif SC',serif;
+    --sans:'Noto Sans SC',system-ui,sans-serif;
+    --mono:'Spline Sans Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#cfcabf;}
+  body{
+    font-family:var(--sans);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    padding:40px 0;
+    display:flex;flex-direction:column;align-items:center;gap:28px;
+  }
+
+  /* ---------- PAGE FRAME ---------- */
+  .page{
+    position:relative;
+    width:1400px;height:850px;
+    background:var(--paper);
+    overflow:hidden;
+    box-shadow:0 18px 50px rgba(0,0,0,.18);
+  }
+  /* subtle paper grain */
+  .page::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    mix-blend-mode:multiply;
+  }
+  /* content safe-area */
+  .pad{position:absolute;inset:64px 80px 64px 80px;}
+
+  /* ---------- SHARED EDITORIAL BITS ---------- */
+  .eyebrow{
+    font-family:var(--mono);font-size:12px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--ink-3);
+  }
+  .eyebrow .dot{color:var(--accent);}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.16em;color:var(--accent);text-transform:uppercase;}
+  .rule{height:1px;background:var(--line);border:0;width:100%;}
+  .serif{font-family:var(--serif);}
+  .en{font-family:var(--serif-en);font-style:italic;}
+
+  /* footer running on every page */
+  .foot{
+    position:absolute;left:80px;right:80px;bottom:30px;
+    display:flex;justify-content:space-between;align-items:center;
+    font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+    color:var(--ink-3);text-transform:uppercase;
+  }
+  .foot .mark{color:var(--ink);}
+  .pageno b{color:var(--accent);font-weight:500;}
+
+  /* big section index numeral */
+  .index{
+    font-family:var(--serif-en);font-weight:400;
+    font-size:150px;line-height:.8;color:var(--ink);
+    letter-spacing:-.02em;
+  }
+  .index .slash{color:var(--accent);}
+
+  h1.display{
+    font-family:var(--serif);font-weight:700;
+    font-size:62px;line-height:1.12;letter-spacing:-.01em;color:var(--ink);
+  }
+  h2.title{
+    font-family:var(--serif);font-weight:600;
+    font-size:40px;line-height:1.2;color:var(--ink);letter-spacing:0;
+  }
+  .lead{font-size:17px;line-height:1.8;color:var(--ink-2);font-weight:300;}
+  .body{font-size:14.5px;line-height:1.85;color:var(--ink-2);font-weight:300;}
+  .label{font-family:var(--serif);font-weight:600;font-size:18px;color:var(--ink);}
+  .accent{color:var(--accent);}
+
+  /* placeholder image block — editorial caption style */
+  .ph{
+    position:relative;background:var(--card);
+    display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--line);
+  }
+  .ph::before{
+    content:attr(data-tag);
+    font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+    color:var(--ink-3);text-transform:uppercase;
+  }
+  .ph .corner{position:absolute;top:10px;left:10px;font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.1em;}
+
+  /* phone mock */
+  .phone{
+    position:relative;background:#fbf8f1;border-radius:26px;
+    border:1px solid var(--line);overflow:hidden;
+    box-shadow:0 12px 30px rgba(0,0,0,.10);
+  }
+  .phone .scr{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.12em;text-transform:uppercase;}
+
+  .tag{
+    display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--ink-2);
+    border:1px solid var(--line);border-radius:2px;padding:5px 9px;
+  }
+
+  /* helpers */
+  .col{display:flex;flex-direction:column;}
+  .between{justify-content:space-between;}
+  .gap8{gap:8px}.gap12{gap:12px}.gap16{gap:16px}.gap20{gap:20px}.gap28{gap:28px}.gap40{gap:40px}
+
+  /* ===== PRINT ===== */
+  @media print{
+    @page{size:1400px 850px;margin:0;}
+    body{padding:0;gap:0;background:#fff;}
+    .page{box-shadow:none;page-break-after:always;break-after:page;}
+    .page:last-child{page-break-after:auto;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ 01 · COVER ============ -->
+<section class="page">
+  <div class="pad" style="display:grid;grid-template-columns:300px 1fr;gap:64px;">
+    <!-- left column -->
+    <div class="col between">
+      <div class="col gap28">
+        <div class="col gap8">
+          <span class="eyebrow"><span class="dot">●</span> 小红书 RPDC Hackathon · Top 15</span>
+          <div style="font-family:var(--serif-en);font-style:italic;font-weight:500;font-size:46px;letter-spacing:-.01em;color:var(--ink);">Lifescribe</div>
+        </div>
+        <hr class="rule">
+        <p class="body" style="font-size:13.5px;">
+          「生活印诗机」是一款从现实生活中收集文字碎片进行创作的 <span class="accent">AI 拼字产品</span>。用户可以在日常场景里拍摄招牌、包装、路牌、广告等真实世界中的字母与数字，系统会自动识别、抠图并沉淀成个人专属的"生活字母库"。
+        </p>
+        <p class="body" style="font-size:13.5px;">
+          用户既可以自由拼贴输入内容，也可以借助 AI <span class="accent">根据情绪或关键词生成短句</span>与诗意表达，再由这些来自真实生活的文字重新组合成独特的视觉作品。
+        </p>
+        <p class="body" style="font-size:13.5px;">
+          它不仅是一个创作工具，更像一场关于<span class="accent">"重新发现生活"</span>的小游戏。
+        </p>
+      </div>
+      <div class="col gap16">
+        <div style="display:flex;gap:8px;">
+          <span class="tag">daily tool</span>
+          <span class="tag">AIGC</span>
+        </div>
+        <span class="eyebrow" style="text-transform:none;letter-spacing:.04em;">UX Intern · Owner of MVP Design — May 2026</span>
+      </div>
+    </div>
+    <!-- right: title + phones -->
+    <div class="col between">
+      <div class="col gap20" style="padding-top:6px;">
+        <span class="eyebrow">Concept · Product Design · Build</span>
+        <h1 class="display" style="font-size:96px;line-height:.98;">生活<br>印诗机</h1>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;height:430px;">
+        <div class="phone"><div class="scr">首页 · 字母库</div></div>
+        <div class="phone"><div class="scr">AI 起句</div></div>
+        <div class="phone"><div class="scr">成品 · 诗</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark serif" style="font-style:italic;">Lifescribe</span><span class="pageno">谭加奇 · 天津大学 — <b>01</b></span></div>
+</section>
+
+<!-- ============ 02 · PROBLEM ============ -->
+<section class="page">
+  <div class="pad" style="display:grid;grid-template-columns:1fr 1fr;gap:80px;">
+    <!-- left -->
+    <div class="col between">
+      <div class="col gap28">
+        <span class="kicker">01 — The Problem</span>
+        <h1 class="display">我们越来越<br>看不见生活了。</h1>
+        <p class="lead" style="color:var(--accent);max-width:380px;">看见与记录本该是一种仪式，<br>却在重复的日常里被磨平。</p>
+      </div>
+      <div class="col gap28" style="max-width:420px;">
+        <div class="col gap8">
+          <span class="label">钝感</span>
+          <p class="body">日子像复读机，我们路过太多，却几乎什么都没真正看见。</p>
+        </div>
+        <hr class="rule">
+        <div class="col gap8">
+          <span class="label">表演</span>
+          <p class="body">社媒上记录成了营业——要好看、要有梗、要成为标榜自己的标签。</p>
+        </div>
+        <hr class="rule">
+        <div class="col gap8">
+          <span class="label">变轻</span>
+          <p class="body">于是我想：如果记录不必表演，只是低头，在生活里捡字母呢？</p>
+        </div>
+      </div>
+    </div>
+    <!-- right -->
+    <div class="col between">
+      <h2 class="title" style="font-size:46px;line-height:1.25;">一个把日常观察，<br>变成<span class="accent">私人诗集</span>的<br>轻量记录工具。</h2>
+      <div class="ph" data-tag="实拍 · 街头字母" style="height:360px;">
+        <span class="corner">FIG. 01</span>
+      </div>
+      <p class="body" style="font-size:13px;">一道裂缝是 Y，一截水管是 U，一个井盖是 O。当你为凑齐 A 到 Z 而打量世界，你其实在重新看见它——这些字母拼成的句子，是只有你能解开的生活密码。</p>
+    </div>
+  </div>
+  <div class="foot"><span class="mark serif" style="font-style:italic;">Lifescribe</span><span class="pageno">问题 · The Problem — <b>02</b></span></div>
+</section>
+
+<!-- ============ 03 · POSITIONING / 捡字母 ============ -->
+<section class="page">
+  <div class="pad" style="display:grid;grid-template-columns:340px 1fr;gap:64px;">
+    <div class="col between">
+      <div class="col gap28">
+        <span class="kicker">02 — How it works</span>
+        <h1 class="display">捡字母</h1>
+        <p class="lead">逛街变成寻宝，世界忽然多了 26 个秘密。低头，城市开始向你拼写。</p>
+      </div>
+      <div class="col gap28" style="max-width:300px;">
+        <div class="col gap8">
+          <span class="label">给观察一个母题</span>
+          <p class="body">建筑、工具、裂缝、铁器、被丢弃之物……分类让逛街有方向，也长出收集欲。</p>
+        </div>
+        <hr class="rule">
+        <div class="col gap8">
+          <span class="label">每次打开都被生活搭句话</span>
+          <p class="body">随声而变的首页文案、今天的天气，悄悄稀释掉工具感。</p>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:end;">
+      <div class="col gap12">
+        <div class="phone" style="height:560px;"><div class="scr">首页 · 随机文案 + 今日天气</div></div>
+        <span class="eyebrow" style="text-transform:none;">首页（随机文案 + 今日天气）</span>
+      </div>
+      <div class="col gap12">
+        <div class="phone" style="height:520px;"><div class="scr">选主题 · 取景拍摄</div></div>
+        <span class="eyebrow" style="text-transform:none;">选主题 / 取景拍摄</span>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark serif" style="font-style:italic;">Lifescribe</span><span class="pageno">捡字母 — <b>03</b></span></div>
+</section>
+
+<!-- ============ 04 · 收进字母库 ============ -->
+<section class="page">
+  <div class="pad" style="display:grid;grid-template-columns:360px 1fr;gap:64px;">
+    <div class="col between">
+      <div class="col gap28">
+        <span class="kicker">03 — Capture</span>
+        <h1 class="display">收进<br>字母库</h1>
+        <p class="lead">拍下、自动抠好，像把一枚瞬间放进口袋。</p>
+      </div>
+      <div class="col gap8" style="max-width:300px;">
+        <span class="label">把收藏的成本压到最低</span>
+        <p class="body">一键抠图、自动裁切——收一个字母，不该比看见它更费劲。</p>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1.1fr .9fr;gap:24px;align-items:center;">
+      <div class="phone" style="height:620px;"><div class="scr">今日字母库收集中</div></div>
+      <div class="col gap20">
+        <div class="phone" style="height:250px;"><div class="scr">取景 · 保存为图鉴</div></div>
+        <div class="phone" style="height:300px;"><div class="scr">自动抠图 · 入库</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark serif" style="font-style:italic;">Lifescribe</span><span class="pageno">收进字母库 — <b>04</b></span></div>
+</section>
+
+<!-- ============ 05 · AI 起句 ============ -->
+<section class="page">
+  <div class="pad" style="display:grid;grid-template-columns:360px 1fr;gap:64px;">
+    <div class="col between">
+      <div class="col gap28">
+        <span class="kicker">04 — AI compose</span>
+        <h1 class="display">写下今天<br>让它替你起句</h1>
+        <p class="lead">写不出也没关系，给个词，它替你成句。</p>
+      </div>
+      <div class="col gap8" style="max-width:300px;">
+        <span class="label">让「写不出」不再是借口</span>
+        <p class="body">AI 起句只用大写、短句、不带标点。约束不是限制，它让每一首都更像诗。</p>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:center;justify-items:center;">
+      <div class="phone" style="height:600px;width:290px;"><div class="scr">生活印诗机 · 输入</div></div>
+      <div class="phone" style="height:600px;width:290px;"><div class="scr">字母拼贴 · 成诗</div></div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark serif" style="font-style:italic;">Lifescribe</span><span class="pageno">AI 起句 — <b>05</b></span></div>
+</section>
+
+<!-- ============ 06 · 关键设计决策 (table) ============ -->
+<section class="page">
+  <div class="pad col between">
+    <div class="col gap16">
+      <span class="kicker">05 — Key Decisions</span>
+      <h2 class="title">关键设计决策</h2>
+    </div>
+    <div class="col" style="flex:1;justify-content:center;">
+      <!-- rows -->
+      <div class="dec-row">
+        <span class="index" style="font-size:96px;">01</span>
+        <span class="label" style="font-size:24px;">轻盈优先</span>
+        <p class="body" style="font-size:16px;">一个动作就能玩。不逼你写长文，不逼你排版。</p>
+      </div>
+      <hr class="rule">
+      <div class="dec-row">
+        <span class="index" style="font-size:96px;">02</span>
+        <span class="label" style="font-size:24px;">去表演化</span>
+        <p class="body" style="font-size:16px;">成品是诗，不是九宫格；是给自己的，不是给赞的。</p>
+      </div>
+      <hr class="rule">
+      <div class="dec-row">
+        <span class="index" style="font-size:96px;">03</span>
+        <span class="label" style="font-size:24px;">重新看见</span>
+        <p class="body" style="font-size:16px;">玩法本身就是一次观察练习，给你逛街的新眼睛。</p>
+      </div>
+      <hr class="rule">
+      <div class="dec-row">
+        <span class="index" style="font-size:96px;">04</span>
+        <span class="label" style="font-size:24px;">带体温的字体</span>
+        <p class="body" style="font-size:16px;">每个字母都来自真实物体，排版自带你的痕迹与记忆。</p>
+      </div>
+    </div>
+  </div>
+  <style>
+    .dec-row{display:grid;grid-template-columns:160px 240px 1fr;align-items:center;gap:40px;padding:14px 0;}
+    .dec-row .index{color:var(--accent);}
+  </style>
+  <div class="foot"><span class="mark serif" style="font-style:italic;">Lifescribe</span><span class="pageno">关键设计决策 — <b>06</b></span></div>
+</section>
+
+<!-- ============ 07 · 视觉/交互/文案 ============ -->
+<section class="page">
+  <div class="pad col between">
+    <div class="col gap16">
+      <span class="kicker">06 — Craft</span>
+      <h2 class="title">视觉 · 交互 · 文案</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:48px;flex:1;align-content:start;padding-top:8px;">
+      <div class="col gap16">
+        <span class="eyebrow"><span class="dot">●</span> 01 Visual</span>
+        <span class="label" style="font-size:22px;">视觉</span>
+        <p class="body">手作感、拼贴感、留白、低饱和——像一本旧手帐。</p>
+        <div class="ph" data-tag="实拍 · 录屏" style="height:230px;"><span class="corner">FIG. 02</span></div>
+      </div>
+      <div class="col gap16">
+        <span class="eyebrow"><span class="dot">●</span> 02 Interaction</span>
+        <span class="label" style="font-size:22px;">交互</span>
+        <p class="body">滑动创建、字母 A→Z 逐个浮现的启动动画——让连等待都有诗意。</p>
+        <div class="ph" data-tag="启动动画 · 连续帧" style="height:230px;"><span class="corner">FIG. 03</span></div>
+      </div>
+      <div class="col gap16">
+        <span class="eyebrow"><span class="dot">●</span> 03 Copywriting</span>
+        <span class="label" style="font-size:22px;">文案</span>
+        <p class="body">像朋友，不像系统。它说「今天遇见了什么字？」，不是「请输入内容」。</p>
+        <div class="ph" data-tag="实拍 · 录屏" style="height:230px;"><span class="corner">FIG. 04</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="mark serif" style="font-style:italic;">Lifescribe</span><span class="pageno">视觉 · 交互 · 文案 — <b>07</b></span></div>
+</section>
+
+<!-- ============ 08 · 成品 / 拼成这样 ============ -->
+<section class="page">
+  <div class="pad" style="display:grid;grid-template-columns:380px 1fr;gap:56px;">
+    <div class="col between">
+      <div class="col gap28">
+        <span class="kicker">07 — The Outcome</span>
+        <h1 class="display" style="font-size:48px;">记录，不是为了被看见，而是为了你<span class="accent">重新看见</span>。</h1>
+      </div>
+      <p class="lead" style="max-width:320px;">当你愿意低头，为它捡一枚字母，你和它之间，那根松掉的线，会重新被系上。</p>
+    </div>
+    <div style="position:relative;">
+      <!-- layered poem cards, editorial offset (no rotation) -->
+      <div class="poem-card" style="left:0;top:30px;z-index:1;opacity:.5;">
+        <div class="scr-poem muted">LONE EMBRACE …</div>
+      </div>
+      <div class="poem-card" style="left:120px;top:90px;z-index:2;opacity:.7;">
+        <div class="scr-poem muted">LONE EMBRACE …</div>
+      </div>
+      <div class="poem-card" style="left:240px;top:0;z-index:3;background:#fff;">
+        <div class="scr-poem">
+          <div class="pt">LONE EMBRACE</div>
+          <div class="pb">HANDS MIGHT JOIN<br>MINDS NEVER MEET<br>VOICES WHISPER<br>CHASM WIDENS SLOW<br>FEELINGS DISTINCT<br>SIGHTS ARE ODD<br>HEARTS FIND SPACE<br>SOLITUDE REMAINS<br>NIGHTS GROW LONG<br>JOY SEEMS SHARP<br>PRESENCE ALONE<br>CALLS GO SILENT<br>TOUCH BRINGS CHILL<br>DEEP SEPARATES</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <style>
+    .poem-card{position:absolute;width:300px;height:560px;background:#f7f3ea;border:1px solid var(--line);box-shadow:0 14px 30px rgba(0,0,0,.10);}
+    .scr-poem{padding:46px 34px;text-align:center;font-family:var(--serif-en);color:var(--ink);}
+    .scr-poem .pt{font-size:18px;letter-spacing:.12em;margin-bottom:26px;font-weight:500;}
+    .scr-poem .pb{font-size:14px;line-height:1.95;letter-spacing:.05em;}
+    .scr-poem.muted{display:flex;align-items:flex-start;justify-content:center;color:var(--ink-3);font-size:13px;letter-spacing:.1em;padding-top:46px;}
+  </style>
+  <div class="foot"><span class="mark serif" style="font-style:italic;">Lifescribe</span><span class="pageno">成品 — <b>08</b></span></div>
+</section>
+
+<!-- ============ 09 · CLOSING ============ -->
+<section class="page">
+  <div class="pad col between">
+    <div class="col gap16">
+      <span class="kicker">08 — Gallery</span>
+      <h2 class="title">最后，它们拼成这样</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:32px;flex:1;align-items:center;">
+      <div class="ph" data-tag="成品诗 · 01" style="height:480px;"><span class="corner">PLATE I</span></div>
+      <div class="ph" data-tag="成品诗 · 02" style="height:480px;"><span class="corner">PLATE II</span></div>
+      <div class="ph" data-tag="成品诗 · 03" style="height:480px;"><span class="corner">PLATE III</span></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;">
+      <div style="font-family:var(--serif-en);font-style:italic;font-size:32px;">Thank you.</div>
+      <span class="eyebrow" style="text-transform:none;letter-spacing:.04em;">生活印诗机 · Lifescribe — 谭加奇 · 27届 · 天津大学</span>
+    </div>
+  </div>
+  <div class="foot"><span class="mark serif" style="font-style:italic;">Lifescribe</span><span class="pageno">END — <b>09</b></span></div>
+</section>
+
+</body>
+</html>
