@@ -131,39 +131,11 @@ const stickerVert = `
 const stickerFrag = `
   precision highp float;
   uniform sampler2D map;
-  uniform float borderPx;
-  uniform float cornerR;     // rounded-rect radius in UV units (0 = square)
   varying vec2 vUv;
-  // Anti-aliased rounded-rect mask in UV [0,1] space.
-  float roundMask(vec2 uv, vec2 px){
-    float r = max(cornerR, 0.001);
-    vec2 q = abs(uv - 0.5) - (0.5 - r);
-    float d = length(max(q, 0.0)) - r;
-    float aa = max(max(px.x, px.y), 1e-5);
-    return 1.0 - smoothstep(-aa, aa, d);
-  }
-  float aAt(vec2 uv, vec2 px){
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
-    return texture2D(map, uv).a * roundMask(uv, px);
-  }
   void main(){
-    vec2 px = vec2(length(dFdx(vUv)), length(dFdy(vUv)));
-    bool inside = (vUv.x >= 0.0 && vUv.x <= 1.0 && vUv.y >= 0.0 && vUv.y <= 1.0);
-    vec4 c = inside ? texture2D(map, vUv) : vec4(0.0);
-    float mask = inside ? roundMask(vUv, px) : 0.0;
-    c.a *= mask;
-    float border = 0.0;
-    for(int x=-2;x<=2;x++){
-      for(int y=-2;y<=2;y++){
-        vec2 off = vec2(float(x), float(y)) * px * (borderPx * 0.4);
-        border = max(border, aAt(vUv + off, px));
-      }
-    }
-    float outA = max(c.a, border);
-    if (outA < 0.005) discard;
-    // Outline is always pure white — no grey gradient, clean sticker die-cut.
-    vec3 col = mix(vec3(1.0), c.rgb, c.a);
-    gl_FragColor = vec4(col, outA);
+    vec4 c = texture2D(map, vUv);
+    if (c.a < 0.005) discard;
+    gl_FragColor = c;
   }
 `;
 
@@ -174,31 +146,20 @@ const shadowFrag = `
   precision highp float;
   uniform sampler2D map;
   uniform float strength;
-  uniform float blurPx;  // blur radius in screen pixels
-  uniform float cornerR; // rounded-rect mask radius in UV units (0 = square)
+  uniform float blurPx;
   varying vec2 vUv;
-  float roundMask(vec2 uv, vec2 px){
-    float r = max(cornerR, 0.001);
-    vec2 q = abs(uv - 0.5) - (0.5 - r);
-    float d = length(max(q, 0.0)) - r;
-    float aa = max(max(px.x, px.y), 1e-5);
-    return 1.0 - smoothstep(-aa, aa, d);
-  }
-  float aAt(vec2 uv, vec2 px){
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
-    return texture2D(map, uv).a * roundMask(uv, px);
-  }
   void main(){
     vec2 px = vec2(length(dFdx(vUv)), length(dFdy(vUv)));
     float sum = 0.0;
     float wTot = 0.0;
     for(int x=-3; x<=3; x++){
       for(int y=-3; y<=3; y++){
-        // gaussian-ish falloff
         float r = sqrt(float(x*x + y*y));
         float w = exp(-r * r * 0.35);
         vec2 off = vec2(float(x), float(y)) * px * (blurPx / 3.0);
-        sum  += aAt(vUv + off, px) * w;
+        vec2 uv = vUv + off;
+        float a = (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) ? 0.0 : texture2D(map, uv).a;
+        sum  += a * w;
         wTot += w;
       }
     }
@@ -358,6 +319,20 @@ function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn) {
   return g;
 }
 
+function drawRoundedRect(ctx, x, y, width, height, radius) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
 /* ============ STICKERS ============ */
 const SIZES = { large: 4.0, normal: 3.3, small: 2.7, tiny: 1.65 };
 
@@ -375,18 +350,92 @@ export function addStickers(list) {
         const img = loaded.image;
         const entry = stickers.find(s => s.mesh === mesh);
         if (entry) {
-          entry.aspect = img.width / img.height;
-          // Rasterize at modest resolution for cheap per-pixel alpha lookups
-          // during raycasting (so transparent areas don't catch clicks/hover).
-          const maxDim = 256;
-          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          // 1. Determine if the loaded image has transparency
+          const maxRayDim = 256;
+          const scale = Math.min(1, maxRayDim / Math.max(img.width, img.height));
           const cw = Math.max(1, Math.round(img.width * scale));
           const ch = Math.max(1, Math.round(img.height * scale));
-          const cv = document.createElement('canvas');
-          cv.width = cw; cv.height = ch;
-          const ctx = cv.getContext('2d', { willReadFrequently: true });
-          ctx.drawImage(img, 0, 0, cw, ch);
-          entry._alphaCtx = ctx;
+          
+          const checkCv = document.createElement('canvas');
+          checkCv.width = cw; checkCv.height = ch;
+          const checkCtx = checkCv.getContext('2d');
+          checkCtx.drawImage(img, 0, 0, cw, ch);
+          
+          const imgData = checkCtx.getImageData(0, 0, cw, ch).data;
+          let hasTransparency = false;
+          for (let idx = 3; idx < imgData.length; idx += 4) {
+            if (imgData[idx] < 250) {
+              hasTransparency = true;
+              break;
+            }
+          }
+          
+          // 2. Calculate border width B in texture pixels
+          const maxDim = Math.max(img.width, img.height);
+          // 2.2% of max dimension is a clean resolution-independent border thickness
+          const B = Math.max(4, Math.round(maxDim * 0.022));
+          
+          // 3. Create the pre-processed canvas
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width + 2 * B;
+          canvas.height = img.height + 2 * B;
+          const ctx = canvas.getContext('2d');
+          
+          if (hasTransparency) {
+            // Contour PNG outline: draw silhouette at multiple angles
+            const tempCv = document.createElement('canvas');
+            tempCv.width = img.width;
+            tempCv.height = img.height;
+            const tempCtx = tempCv.getContext('2d');
+            tempCtx.drawImage(img, 0, 0);
+            tempCtx.globalCompositeOperation = 'source-in';
+            tempCtx.fillStyle = '#ffffff';
+            tempCtx.fillRect(0, 0, img.width, img.height);
+            
+            const steps = 48;
+            for (let j = 0; j < steps; j++) {
+              const angle = (j * 2 * Math.PI) / steps;
+              const ox = B + B * Math.cos(angle);
+              const oy = B + B * Math.sin(angle);
+              ctx.drawImage(tempCv, ox, oy);
+            }
+            
+            // Draw original image in center
+            ctx.drawImage(img, B, B);
+          } else {
+            // Rectangular rounded card (screenshots)
+            const r = (d.ipName === 'ciji') ? Math.round(maxDim * 0.08) : Math.round(maxDim * 0.05);
+            const w = img.width;
+            const h = img.height;
+            
+            // Draw white border rounded rect
+            ctx.fillStyle = '#ffffff';
+            drawRoundedRect(ctx, 0, 0, w + 2*B, h + 2*B, r + B);
+            ctx.fill();
+            
+            // Draw image clipped inside
+            ctx.save();
+            ctx.beginPath();
+            drawRoundedRect(ctx, B, B, w, h, r);
+            ctx.clip();
+            ctx.drawImage(img, B, B);
+            ctx.restore();
+          }
+          
+          // 4. Update texture source to canvas
+          loaded.image = canvas;
+          loaded.needsUpdate = true;
+          
+          // Update entry properties
+          entry.aspect = canvas.width / canvas.height;
+          
+          // 5. Store alpha context for raycasting
+          const rayCv = document.createElement('canvas');
+          rayCv.width = cw; rayCv.height = ch;
+          const rayCtx = rayCv.getContext('2d', { willReadFrequently: true });
+          rayCtx.drawImage(canvas, 0, 0, cw, ch);
+          entry._alphaCtx = rayCtx;
+          
           rebuild(entry);
         }
         renderOnce();
@@ -394,48 +443,37 @@ export function addStickers(list) {
       undefined,
       (err) => console.error('[room3d] texture failed:', d.sticker, err)
     );
-    tex.colorSpace = THREE.NoColorSpace;   // don't run sRGB conversion on the sticker
+    tex.colorSpace = THREE.NoColorSpace;
     tex.generateMipmaps = false;
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.anisotropy = 16;
 
-    // Give all stickers a uniform rounded-rect corner — ciji gets a larger
-    // radius because it's a square photo crop; all other PNGs get a subtle
-    // rounding so even square-ish artwork reads as a die-cut sticker card.
     const cornerR = (d && d.ipName === 'ciji') ? 0.08 : 0.06;
-    // Outline width in screen pixels; shrink on narrow viewports.
     const isPhone = (container.clientWidth || window.innerWidth) < 720;
-    const borderPx = isPhone ? 4.0 : 7.0;
 
     const mat = new THREE.ShaderMaterial({
       uniforms: {
-        map:      { value: tex },
-        borderPx: { value: borderPx },     // outline width in screen pixels
-        cornerR:  { value: cornerR },
+        map: { value: tex }
       },
       vertexShader: stickerVert, fragmentShader: stickerFrag,
       transparent: true, depthWrite: false, depthTest: true,
-      side: THREE.DoubleSide,
-      extensions: { derivatives: true },   // dFdx/dFdy
+      side: THREE.DoubleSide
     });
 
-    // Per-sticker drop shadow — always visible, sits on the cylinder
-    // surface, takes the silhouette from the same texture alpha.
     const shMat = new THREE.ShaderMaterial({
       uniforms: {
         map:      { value: tex },
-        strength: { value: 0.35 },
-        blurPx:   { value: 10.0 },   // soft blur radius in screen pixels
-        cornerR:  { value: cornerR },
+        strength: { value: 0.22 },
+        blurPx:   { value: isPhone ? 8.0 : 15.0 }
       },
       vertexShader: stickerVert, fragmentShader: shadowFrag,
       transparent: true, depthWrite: false, depthTest: true,
       side: THREE.DoubleSide,
-      extensions: { derivatives: true },
+      extensions: { derivatives: true }
     });
     const shMesh = new THREE.Mesh(new THREE.BufferGeometry(), shMat);
-    shMesh.renderOrder = 1;                // behind the sticker (renderOrder 2+)
+    shMesh.renderOrder = 1;
     world.add(shMesh);
 
     const saved = loadPos(d.id);
@@ -448,6 +486,7 @@ export function addStickers(list) {
     world.add(mesh);
     stickers.push({ mesh, shMesh, data: d, theta, y, S, lift: 0.005, aspect: 1 });
   });
+});
   // Aim the camera at whichever side of the pole has the most stickers, so
   // the first paint never lands on an empty back. Also pan vertically to
   // their centre so the cluster lands in the middle of the viewport.
