@@ -135,29 +135,28 @@ const stickerFrag = `
   uniform float cornerR;     // rounded-rect radius in UV units (0 = square)
   varying vec2 vUv;
   // Anti-aliased rounded-rect mask in UV [0,1] space.
-  float roundMask(vec2 uv){
+  float roundMask(vec2 uv, vec2 px){
     float r = max(cornerR, 0.001);
     vec2 q = abs(uv - 0.5) - (0.5 - r);
     float d = length(max(q, 0.0)) - r;
-    vec2 px = vec2(length(dFdx(uv)), length(dFdy(uv)));
     float aa = max(max(px.x, px.y), 1e-5);
     return 1.0 - smoothstep(-aa, aa, d);
   }
-  float aAt(vec2 uv){
-    vec2 clampedUv = clamp(uv, 0.0, 1.0);
-    return texture2D(map, clampedUv).a * roundMask(uv);
+  float aAt(vec2 uv, vec2 px){
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
+    return texture2D(map, uv).a * roundMask(uv, px);
   }
   void main(){
+    vec2 px = vec2(length(dFdx(vUv)), length(dFdy(vUv)));
     bool inside = (vUv.x >= 0.0 && vUv.x <= 1.0 && vUv.y >= 0.0 && vUv.y <= 1.0);
     vec4 c = inside ? texture2D(map, vUv) : vec4(0.0);
-    float mask = inside ? roundMask(vUv) : 0.0;
+    float mask = inside ? roundMask(vUv, px) : 0.0;
     c.a *= mask;
-    vec2 px = vec2(length(dFdx(vUv)), length(dFdy(vUv)));
     float border = 0.0;
     for(int x=-2;x<=2;x++){
       for(int y=-2;y<=2;y++){
-        vec2 off = vec2(float(x), float(y)) * px * (borderPx * 0.5);
-        border = max(border, aAt(vUv + off));
+        vec2 off = vec2(float(x), float(y)) * px * (borderPx * 0.4);
+        border = max(border, aAt(vUv + off, px));
       }
     }
     float outA = max(c.a, border);
@@ -178,17 +177,16 @@ const shadowFrag = `
   uniform float blurPx;  // blur radius in screen pixels
   uniform float cornerR; // rounded-rect mask radius in UV units (0 = square)
   varying vec2 vUv;
-  float roundMask(vec2 uv){
+  float roundMask(vec2 uv, vec2 px){
     float r = max(cornerR, 0.001);
     vec2 q = abs(uv - 0.5) - (0.5 - r);
     float d = length(max(q, 0.0)) - r;
-    vec2 px = vec2(length(dFdx(uv)), length(dFdy(uv)));
     float aa = max(max(px.x, px.y), 1e-5);
     return 1.0 - smoothstep(-aa, aa, d);
   }
-  float aAt(vec2 uv){
-    vec2 clampedUv = clamp(uv, 0.0, 1.0);
-    return texture2D(map, clampedUv).a * roundMask(uv);
+  float aAt(vec2 uv, vec2 px){
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
+    return texture2D(map, uv).a * roundMask(uv, px);
   }
   void main(){
     vec2 px = vec2(length(dFdx(vUv)), length(dFdy(vUv)));
@@ -200,7 +198,7 @@ const shadowFrag = `
         float r = sqrt(float(x*x + y*y));
         float w = exp(-r * r * 0.35);
         vec2 off = vec2(float(x), float(y)) * px * (blurPx / 3.0);
-        sum  += aAt(vUv + off) * w;
+        sum  += aAt(vUv + off, px) * w;
         wTot += w;
       }
     }
