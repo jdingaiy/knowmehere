@@ -757,7 +757,7 @@ function onMove(e) {
     // to the safe range so the pole's caps stay out of frame. Touch needs a
     // higher gain because finger travel is shorter than mouse travel.
     const gain = rotating.touch ? 0.045 : 0.025;
-    viewY = clamp(rotating.baseY - dy * gain, -CFG.viewYRange, CFG.viewYRange);
+    viewY = clamp(rotating.baseY + dy * gain, -CFG.viewYRange, CFG.viewYRange);
     return;
   }
   if (!dragging) return;
