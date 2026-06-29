@@ -133,6 +133,7 @@ const stickerFrag = `
   uniform sampler2D map;
   varying vec2 vUv;
   void main(){
+    if (vUv.x < 0.0 || vUv.x > 1.0 || vUv.y < 0.0 || vUv.y > 1.0) discard;
     vec4 c = texture2D(map, vUv);
     if (c.a < 0.005) discard;
     gl_FragColor = c;
@@ -370,16 +371,18 @@ export function addStickers(list) {
             }
           }
           
-          // 2. Calculate border width B in texture pixels
+          // 2. Calculate border width B in texture pixels and padding P
           const maxDim = Math.max(img.width, img.height);
-          // 2.2% of max dimension is a clean resolution-independent border thickness
           const B = Math.max(4, Math.round(maxDim * 0.022));
+          const P = 4; // transparent padding to prevent edge clamping artifacts
           
           // 3. Create the pre-processed canvas
           const canvas = document.createElement('canvas');
-          canvas.width = img.width + 2 * B;
-          canvas.height = img.height + 2 * B;
+          canvas.width = img.width + 2 * B + 2 * P;
+          canvas.height = img.height + 2 * B + 2 * P;
           const ctx = canvas.getContext('2d');
+          
+          const drawOffset = B + P;
           
           if (hasTransparency) {
             // Contour PNG outline: draw silhouette at multiple angles
@@ -395,30 +398,30 @@ export function addStickers(list) {
             const steps = 48;
             for (let j = 0; j < steps; j++) {
               const angle = (j * 2 * Math.PI) / steps;
-              const ox = B + B * Math.cos(angle);
-              const oy = B + B * Math.sin(angle);
+              const ox = drawOffset + B * Math.cos(angle);
+              const oy = drawOffset + B * Math.sin(angle);
               ctx.drawImage(tempCv, ox, oy);
             }
             
             // Draw original image in center
-            ctx.drawImage(img, B, B);
+            ctx.drawImage(img, drawOffset, drawOffset);
           } else {
             // Rectangular rounded card (screenshots)
             const r = (d.ipName === 'ciji') ? Math.round(maxDim * 0.08) : Math.round(maxDim * 0.05);
             const w = img.width;
             const h = img.height;
             
-            // Draw white border rounded rect
+            // Draw white border rounded rect (covers outer boundary)
             ctx.fillStyle = '#ffffff';
-            drawRoundedRect(ctx, 0, 0, w + 2*B, h + 2*B, r + B);
+            drawRoundedRect(ctx, P, P, w + 2*B, h + 2*B, r + B);
             ctx.fill();
             
             // Draw image clipped inside
             ctx.save();
             ctx.beginPath();
-            drawRoundedRect(ctx, B, B, w, h, r);
+            drawRoundedRect(ctx, drawOffset, drawOffset, w, h, r);
             ctx.clip();
-            ctx.drawImage(img, B, B);
+            ctx.drawImage(img, drawOffset, drawOffset);
             ctx.restore();
           }
           
