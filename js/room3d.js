@@ -136,16 +136,16 @@ const stickerFrag = `
   varying vec2 vUv;
   // Anti-aliased rounded-rect mask in UV [0,1] space.
   float roundMask(vec2 uv){
-    if (cornerR <= 0.0) return 1.0;
-    vec2 q = abs(uv - 0.5) - (0.5 - cornerR);
-    float d = length(max(q, 0.0)) - cornerR;
+    float r = max(cornerR, 0.001);
+    vec2 q = abs(uv - 0.5) - (0.5 - r);
+    float d = length(max(q, 0.0)) - r;
     vec2 px = vec2(length(dFdx(uv)), length(dFdy(uv)));
     float aa = max(max(px.x, px.y), 1e-5);
     return 1.0 - smoothstep(-aa, aa, d);
   }
   float aAt(vec2 uv){
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
-    return texture2D(map, uv).a * roundMask(uv);
+    vec2 clampedUv = clamp(uv, 0.0, 1.0);
+    return texture2D(map, clampedUv).a * roundMask(uv);
   }
   void main(){
     bool inside = (vUv.x >= 0.0 && vUv.x <= 1.0 && vUv.y >= 0.0 && vUv.y <= 1.0);
@@ -179,16 +179,16 @@ const shadowFrag = `
   uniform float cornerR; // rounded-rect mask radius in UV units (0 = square)
   varying vec2 vUv;
   float roundMask(vec2 uv){
-    if (cornerR <= 0.0) return 1.0;
-    vec2 q = abs(uv - 0.5) - (0.5 - cornerR);
-    float d = length(max(q, 0.0)) - cornerR;
+    float r = max(cornerR, 0.001);
+    vec2 q = abs(uv - 0.5) - (0.5 - r);
+    float d = length(max(q, 0.0)) - r;
     vec2 px = vec2(length(dFdx(uv)), length(dFdy(uv)));
     float aa = max(max(px.x, px.y), 1e-5);
     return 1.0 - smoothstep(-aa, aa, d);
   }
   float aAt(vec2 uv){
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
-    return texture2D(map, uv).a * roundMask(uv);
+    vec2 clampedUv = clamp(uv, 0.0, 1.0);
+    return texture2D(map, clampedUv).a * roundMask(uv);
   }
   void main(){
     vec2 px = vec2(length(dFdx(vUv)), length(dFdy(vUv)));
