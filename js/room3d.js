@@ -486,7 +486,6 @@ export function addStickers(list) {
     world.add(mesh);
     stickers.push({ mesh, shMesh, data: d, theta, y, S, lift: 0.005, aspect: 1 });
   });
-});
   // Aim the camera at whichever side of the pole has the most stickers, so
   // the first paint never lands on an empty back. Also pan vertically to
   // their centre so the cluster lands in the middle of the viewport.
