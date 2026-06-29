@@ -177,12 +177,31 @@ export function initRoom(opts) {
   tagEl     = document.getElementById('sticker-tag');
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xffffff);
+
+  // 360-degree cylinder forest background with mirrored wrapping for seamless loops
+  const forestTex = texLoader.load('assets/texture/forest.jpg', (loaded) => {
+    loaded.wrapS = THREE.MirroredRepeatWrapping;
+    loaded.wrapT = THREE.ClampToEdgeWrapping;
+    loaded.repeat.set(4, 1);
+    renderOnce();
+  });
+  const bgGeo = new THREE.CylinderGeometry(60, 60, 55, 32, 1, true);
+  const bgMat = new THREE.MeshBasicMaterial({
+    map: forestTex,
+    side: THREE.BackSide,
+    depthWrite: false,
+    depthTest: true,
+  });
+  const bgMesh = new THREE.Mesh(bgGeo, bgMat);
+  bgMesh.position.set(0, 0, 0);
+  bgMesh.renderOrder = -1; // render behind everything else
+  scene.add(bgMesh);
 
   // Fixed lights — affect the pole material only (stickers use a custom
-  // unlit shader). Bright ambient keeps the back side from going dark.
-  scene.add(new THREE.AmbientLight(0xffffff, 1.15));
-  const key = new THREE.DirectionalLight(0xffffff, 1.25);
+  // unlit shader). Bright ambient is tinted soft forest green-white to match
+  // the forest ambiance, and key light is tinted warm golden sunlight.
+  scene.add(new THREE.AmbientLight(0xe1ece1, 1.25));
+  const key = new THREE.DirectionalLight(0xfff8eb, 1.35);
   key.position.set(6, 10, 8);   // top-front-right of the pole
   scene.add(key);
 
