@@ -11,7 +11,7 @@
  * Replace later with a real model by overriding `getPoleSurface()` to
  * return your model's (theta, y) -> world position/normal mapping.
  */
-import * as THREE from 'three';
+import * as THREE from './three.module.js';
 
 const CFG = {
   poleRadius: 4.2,
