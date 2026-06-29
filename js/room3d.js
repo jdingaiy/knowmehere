@@ -211,6 +211,9 @@ function setupEnvironment() {
   const pmremGenerator = new THREE.PMREMGenerator(renderer);
   pmremGenerator.compileEquirectangularShader();
 
+  // Blur the background slightly to create a premium depth-of-field bokeh effect
+  scene.backgroundBlurriness = 0.08;
+
   texLoader.load('assets/texture/forest_pan.jpg', (texture) => {
     texture.mapping = THREE.EquirectangularReflectionMapping;
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -353,13 +356,17 @@ function drawRoundedRect(ctx, x, y, width, height, radius) {
 }
 
 /* ============ STICKERS ============ */
-const SIZES = { large: 4.0, normal: 3.3, small: 2.7, tiny: 1.65 };
 
 export function addStickers(list) {
   if (!Array.isArray(list) || !list.length) {
     console.error('[room3d] STICKERS_DATA missing/empty:', list);
     return;
   }
+  const isPhone = (container.clientWidth || window.innerWidth) < 720;
+  const SIZES = isPhone 
+    ? { large: 5.2, normal: 4.3, small: 3.5, tiny: 2.3 } // scaled up for mobile readability
+    : { large: 4.0, normal: 3.3, small: 2.7, tiny: 1.65 };
+
   list.forEach((d, i) => {
     const S = SIZES[d.size] || SIZES.normal;
 
@@ -476,7 +483,6 @@ export function addStickers(list) {
     tex.anisotropy = 16;
 
     const cornerR = (d && d.ipName === 'ciji') ? 0.08 : 0.06;
-    const isPhone = (container.clientWidth || window.innerWidth) < 720;
 
     const mat = new THREE.ShaderMaterial({
       uniforms: {
