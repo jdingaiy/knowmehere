@@ -372,8 +372,11 @@ export function addStickers(list) {
           }
           
           // 2. Calculate border width B in texture pixels and padding P
+          // S is the size of the sticker quad. To unify the visual border width
+          // on screen, we scale B inversely with S so it remains constant in world space.
           const maxDim = Math.max(img.width, img.height);
-          const B = Math.max(4, Math.round(maxDim * 0.022));
+          const W_world = 0.065; // unified border width in world units (adjust to change thickness)
+          const B = Math.max(3, Math.round((W_world / S) * maxDim));
           const P = 4; // transparent padding to prevent edge clamping artifacts
           
           // 3. Create the pre-processed canvas
