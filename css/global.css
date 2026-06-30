@@ -135,7 +135,7 @@ body {
   display: flex; align-items: center; gap: 6px;
   padding: 0 20px;
   border-radius: 100px;
-  background: rgba(255,255,255,0.45);
+  background: rgba(255,255,255,0.22);
   border: none;
   font-family: var(--font);
   font-size: 13px; font-weight: 600;
@@ -149,7 +149,7 @@ body {
   text-decoration: none;
   user-select: none;
 }
-.ui-pill:hover { background: rgba(255,255,255,0.62); box-shadow: 0 6px 22px rgba(60,55,50,0.14); color: var(--ink); }
+.ui-pill:hover { background: rgba(255,255,255,0.38); box-shadow: 0 6px 22px rgba(60,55,50,0.14); color: var(--ink); }
 .ui-pill-bottom {
   bottom: 26px;
   left: 24px;
@@ -167,7 +167,7 @@ body {
   left: 24px;
   transform: translateY(8px);
   z-index: 899;
-  background: rgba(255,255,255,0.55);
+  background: rgba(255,255,255,0.30);
   border: none;
   border-radius: 16px;
   padding: 6px;
@@ -191,7 +191,7 @@ body {
   transition: background 0.12s ease;
   display: flex; align-items: center; gap: 8px;
 }
-.ui-drop-item:hover { background: rgba(255,255,255,0.55); color: var(--ink); }
+.ui-drop-item:hover { background: rgba(255,255,255,0.30); color: var(--ink); }
 .ui-drop-item.active { color: var(--ink); font-weight: 600; }
 .ui-drop-item .dot {
   width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;

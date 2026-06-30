@@ -30,7 +30,7 @@ const CFG = {
 };
 
 let scene, camera, renderer, raycaster, pointer;
-let pole, world;
+let pole, world, poleLightMap = null;
 let rotating = null;   // { startX, startY, baseRot, baseY } during a drag-the-pole gesture
 let viewY = 0;         // vertical pan offset (scroll / swipe)
 let cameraAngle = 0;   // camera orbit angle around the Y axis (radians)
@@ -92,35 +92,151 @@ const texLoader = new THREE.TextureLoader();
 
 /* ---------- pole: real PBR-ish material with a fixed light ---------- */
 const POLE_TEX = 'assets/texture/gravel_embedded_concrete_2k.blend/textures/gravel_embedded_concrete_diff_2k.jpg';
+const POLE_NOR = 'assets/texture/gravel_embedded_concrete_2k.blend/textures/gravel_embedded_concrete_nor_2k.jpg';
+const POLE_ROUGH = 'assets/texture/gravel_embedded_concrete_2k.blend/textures/gravel_embedded_concrete_rough_2k.jpg';
+const POLE_LIGHT = 'assets/texture/dappled_light.jpg';
 
 const poleMat = new THREE.MeshStandardMaterial({
-  // Until the texture finishes downloading we render a flat warm-gray pole
-  // so visitors see "loading concrete" rather than a stark black silhouette
-  // (which is what an untextured StandardMaterial defaults to).
   color: 0xb8b3ad,
   map: null,
+  normalMap: null,
+  normalScale: new THREE.Vector2(1.2, 1.2), // slightly stronger bumpiness for realistic gravel texture
+  roughnessMap: null,
   roughness: 0.95,
   metalness: 0.0,
 });
-// Swap the diffuse map in once it's ready, then trigger a re-render.
+
+// Custom Gobo project map parameters stored in userData
+poleMat.userData.goboRepeat = { value: new THREE.Vector2(1.0, 1.0) }; // smaller sunlight spots wrapping seamlessly (integer horizontally)
+poleMat.userData.goboOffset = { value: new THREE.Vector2(0, 0) };
+poleMat.userData.goboTime = { value: 0 };
+poleMat.userData.goboMap = { value: null };
+poleMat.userData.goboIntensity = { value: 1.7 };
+
+poleMat.onBeforeCompile = (shader) => {
+  shader.uniforms.goboRepeat = poleMat.userData.goboRepeat;
+  shader.uniforms.goboOffset = poleMat.userData.goboOffset;
+  shader.uniforms.goboTime = poleMat.userData.goboTime;
+  shader.uniforms.goboMap = poleMat.userData.goboMap;
+  shader.uniforms.goboIntensity = poleMat.userData.goboIntensity;
+  
+  // Inject custom varying into vertex shader
+  shader.vertexShader = `
+    varying vec3 vCustomWorldPosition;
+  ` + shader.vertexShader;
+  
+  // Assign custom varying in vertex shader (explicitly calculate worldPosition to bypass Three.js defines)
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <worldpos_vertex>',
+    `#include <worldpos_vertex>
+    vCustomWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;`
+  );
+  
+  // Inject custom uniforms and varying into fragment shader
+  shader.fragmentShader = `
+    uniform vec2 goboRepeat;
+    uniform vec2 goboOffset;
+    uniform float goboTime;
+    uniform sampler2D goboMap;
+    uniform float goboIntensity;
+    varying vec3 vCustomWorldPosition;
+  ` + shader.fragmentShader;
+  
+  // Inject custom projected lightMap multiplication at the end with directional masking
+  shader.fragmentShader = shader.fragmentShader.replace(
+    '#include <opaque_fragment>',
+    `#include <opaque_fragment>
+    // Project lightMap onto the cylinder seamlessly
+    float theta = atan(vCustomWorldPosition.x, vCustomWorldPosition.z);
+    float u_cyl = theta / (2.0 * 3.14159265) + 0.5;
+    float v_cyl = (vCustomWorldPosition.y / 44.0) + 0.5;
+    vec2 goboUv = vec2(u_cyl, v_cyl) * goboRepeat + goboOffset;
+    vec4 goboVal = texture2D(goboMap, goboUv); // sample from custom goboMap uniform
+    
+    vec3 goboN = normalize(vec3(vCustomWorldPosition.x, 0.0, vCustomWorldPosition.z));
+    vec3 goboL = vec3(0.0, 0.0, 1.0); // straight front: front half lit, back half shadow
+    float NdotL = dot(goboN, goboL);
+    // Front half: full gobo. Smooth fade over a very wide band. Back: zero.
+    float goboMask = smoothstep(-0.4, 0.8, NdotL);
+
+    float currentIntensity = goboIntensity;
+    vec3 sunColor = vec3(1.0, 0.88, 0.70);
+    float goboLight = smoothstep(0.20, 0.85, goboVal.r);
+
+    // Only add gobo spots on the front face - Three.js PBR handles all shadow/lighting naturally
+    gl_FragColor.rgb += (currentIntensity - 1.0) * goboLight * (1.0 - gl_FragColor.rgb) * sunColor * goboMask;
+    `
+  );
+};
+
+function configurePoleMap(tex) {
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
+  tex.repeat.set(7, 11);
+  // Disable mipmaps on all pole textures - prevents UV seam artifacts at geometry UV boundary
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+}
+
+// Load Diffuse Map
 texLoader.load(POLE_TEX, (loaded) => {
   loaded.colorSpace = THREE.SRGBColorSpace;
-  loaded.wrapS = THREE.RepeatWrapping;
-  loaded.wrapT = THREE.RepeatWrapping;
-  loaded.anisotropy = 8;
-  // Tile so each repetition is roughly square in world units. Circumference
-  // is 2*pi*radius ≈ 26.4, height 44; aim for ~4 world-unit tiles -> 6.6 × 11.
-  loaded.repeat.set(6.6, 11);
+  configurePoleMap(loaded);
   poleMat.map = loaded;
-  poleMat.color.set(0xffffff);   // restore neutral tint so map shows true colour
+  poleMat.color.set(0xffffff);
   poleMat.needsUpdate = true;
   renderOnce();
-}, undefined, (err) => console.error('[room3d] pole texture failed:', POLE_TEX, err));
+}, undefined, (err) => console.error('[room3d] diffuse failed:', err));
+
+// Load Normal Map (Generated from diffuse for micro-bump 3D depth)
+texLoader.load(POLE_NOR, (loaded) => {
+  configurePoleMap(loaded);
+  poleMat.normalMap = loaded;
+  poleMat.needsUpdate = true;
+  renderOnce();
+}, undefined, (err) => console.error('[room3d] normal failed:', err));
+
+// Load Roughness Map
+texLoader.load(POLE_ROUGH, (loaded) => {
+  configurePoleMap(loaded);
+  poleMat.roughnessMap = loaded;
+  poleMat.needsUpdate = true;
+  renderOnce();
+}, undefined, (err) => console.error('[room3d] roughness failed:', err));
+
+// Load Dappled Light Map (Forest leaf shadows and sunlight spots)
+texLoader.load(POLE_LIGHT, (loaded) => {
+  loaded.wrapS = THREE.RepeatWrapping;
+  loaded.wrapT = THREE.RepeatWrapping;
+  loaded.generateMipmaps = false; // disable mipmaps to completely eliminate the WebGL mipmap derivative seam at the wrapping boundary!
+  loaded.minFilter = THREE.LinearFilter;
+  
+  // Assign to custom goboMap uniform instead of native lightMap property
+  // This prevents Three.js from defining USE_LIGHTMAP and automatically blending the texture into ambient lighting
+  poleMat.userData.goboMap.value = loaded;
+  poleLightMap = loaded;
+  
+  // Assign to any stickers that have already loaded
+  stickers.forEach(s => {
+    if (s.mesh.material.uniforms && s.mesh.material.uniforms.lightMap) {
+      s.mesh.material.uniforms.lightMap.value = loaded;
+    }
+  });
+
+  poleMat.needsUpdate = true;
+  renderOnce();
+}, undefined, (err) => console.error('[room3d] gobo failed:', err));
 
 /* ---------- sticker shader: white-key + dilated white die-cut border ---------- */
 const stickerVert = `
   varying vec2 vUv;
-  void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+  varying vec3 vWorldPos;
+  void main(){
+    vUv = uv;
+    vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
 `;
 // Sticker shader.
 //   - PNG content output as-is (no tint, no gamma, no fill).
@@ -131,34 +247,77 @@ const stickerVert = `
 const stickerFrag = `
   precision highp float;
   uniform sampler2D map;
+  uniform sampler2D lightMap;
+  uniform vec2 lightMapRepeat;
+  uniform vec2 lightMapOffset;
+  uniform float lightMapIntensity;
+  uniform float time;
   varying vec2 vUv;
+  varying vec3 vWorldPos;
   void main(){
     if (vUv.x < 0.0 || vUv.x > 1.0 || vUv.y < 0.0 || vUv.y > 1.0) discard;
     vec4 c = texture2D(map, vUv);
     if (c.a < 0.005) discard;
+    
+    // Cylindrical projection for seamless lightMap alignment with the pole
+    float theta = atan(vWorldPos.x, vWorldPos.z);
+    float u_cyl = theta / (2.0 * 3.14159265) + 0.5;
+    float v_cyl = (vWorldPos.y / 44.0) + 0.5;
+    
+    vec2 lightUv = vec2(u_cyl, v_cyl) * lightMapRepeat + lightMapOffset;
+    vec4 lightVal = texture2D(lightMap, lightUv);
+    
+    vec3 sN = normalize(vec3(vWorldPos.x, 0.0, vWorldPos.z));
+    vec3 sL = vec3(0.0, 0.0, 1.0); // same front direction as pole
+    float sNdotL = dot(sN, sL);
+    // Smooth fade matching the pole
+    float goboMask = smoothstep(-0.4, 0.8, sNdotL);
+    
+    vec3 sunColor = vec3(1.0, 0.88, 0.70);
+    float lightIntensity = smoothstep(0.20, 0.85, lightVal.r);
+    float currentIntensity = lightMapIntensity;
+    
+    // Only add gobo spots on front face - nothing else changed
+    c.rgb += (currentIntensity - 1.0) * lightIntensity * (1.0 - c.rgb) * sunColor * goboMask;
+    
     gl_FragColor = c;
   }
 `;
 
-// Sticker shadow shader: solid black silhouette using the same texture alpha.
-// Soft contact shadow — multi-tap blur over a configurable screen-pixel radius
-// so the shadow reads as a diffuse fall-off, not a hard silhouette.
 const shadowFrag = `
   precision highp float;
   uniform sampler2D map;
   uniform float strength;
   uniform float blurPx;
   varying vec2 vUv;
+
+  float rand(vec2 co){
+    return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+  }
+
   void main(){
-    vec2 px = vec2(length(dFdx(vUv)), length(dFdy(vUv)));
     float sum = 0.0;
     float wTot = 0.0;
+    
+    // Discrete steps can cause banding lines if aligned.
+    // Jittering the step size and angle per-pixel completely dissolves these lines.
+    vec2 stepSize = vec2(0.0020 * blurPx);
+    
+    float noise = rand(gl_FragCoord.xy);
+    float angle = noise * 6.2831853;
+    float s = sin(angle);
+    float c = cos(angle);
+    mat2 rot = mat2(c, -s, s, c);
+
     for(int x=-3; x<=3; x++){
       for(int y=-3; y<=3; y++){
         float r = sqrt(float(x*x + y*y));
-        float w = exp(-r * r * 0.35);
-        vec2 off = vec2(float(x), float(y)) * px * (blurPx / 3.0);
+        if (r > 3.2) continue; // keep the kernel circular
+        
+        float w = exp(-r * r * 0.40);
+        vec2 off = rot * (vec2(float(x), float(y)) * stepSize);
         vec2 uv = vUv + off;
+        
         float a = (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) ? 0.0 : texture2D(map, uv).a;
         sum  += a * w;
         wTot += w;
@@ -178,9 +337,9 @@ export function initRoom(opts) {
 
   scene = new THREE.Scene();
 
-  // Soft directional and ambient light rig to blend with the environment map (IBL)
-  scene.add(new THREE.AmbientLight(0xe8ece8, 0.45));
-  const key = new THREE.DirectionalLight(0xfff8eb, 0.85);
+  // High-contrast directional and ambient light rig (lower ambient, stronger key)
+  scene.add(new THREE.AmbientLight(0xe8ece8, 0.15));
+  const key = new THREE.DirectionalLight(0xfff8eb, 1.25);
   key.position.set(6, 10, 8);   // top-front-right of the pole
   scene.add(key);
 
@@ -278,8 +437,12 @@ function buildPole() {
     CFG.poleRadius, CFG.poleRadius,
     CFG.poleHeight, CFG.poleSegments, 1, true
   );
+  g.setAttribute('uv2', new THREE.BufferAttribute(g.attributes.uv.array, 2));
   pole = new THREE.Mesh(g, poleMat);
   pole.name = 'pole';
+  // Rotate 180° so Three.js UV seam (default: front, z=+r) moves to the back (z=−r),
+  // co-located with the atan gobo seam — front face is completely clean.
+  pole.rotation.y = Math.PI;
   world.add(pole);
 }
 
@@ -486,7 +649,12 @@ export function addStickers(list) {
 
     const mat = new THREE.ShaderMaterial({
       uniforms: {
-        map: { value: tex }
+        map: { value: tex },
+        lightMap: { value: poleLightMap },
+        lightMapRepeat: { value: new THREE.Vector2(1.0, 1.0) },
+        lightMapOffset: { value: new THREE.Vector2(0, 0) },
+        lightMapIntensity: { value: 1.45 },
+        time: { value: 0 }
       },
       vertexShader: stickerVert, fragmentShader: stickerFrag,
       transparent: true, depthWrite: false, depthTest: true,
@@ -946,6 +1114,7 @@ function renderOnce() { if (renderer && scene && camera) renderer.render(scene, 
 function animate() {
   if (isPaused) return;
   requestAnimationFrame(animate);
+
   syncFlatToView();
   stepHint();
   baseCam();
