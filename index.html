@@ -438,6 +438,7 @@
       document.querySelector('.ui-tabs').setAttribute('data-active', name);
       tabWorks.classList.toggle('active', !cv);
       tabCv   .classList.toggle('active',  cv);
+      document.querySelector('.ui-topbar').classList.toggle('with-blur', cv);
       filterBtn.style.display = cv ? 'none' : '';
       dlBtn.style.display     = cv ? '' : 'none';
       if (cv) {

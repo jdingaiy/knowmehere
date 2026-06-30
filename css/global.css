@@ -65,7 +65,7 @@ body {
   padding: 0 24px;
   transition: opacity 0.25s ease;
 }
-.ui-topbar::before {
+.ui-topbar.with-blur::before {
   content: '';
   position: absolute;
   inset: 0;
