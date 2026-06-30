@@ -839,7 +839,7 @@ function onMove(e) {
   //                 visually put, sticker's LOCAL position on the pole shifts.
   //   vertical   -> sticker.y follows the cursor's projected y on the pole.
   const dx = e.clientX - dragging._startX;
-  const turn = -(dx / window.innerWidth) * Math.PI * 2;
+  const turn = (dx / window.innerWidth) * Math.PI * 2;
   cameraAngle = dragging._baseAngle + turn;
   dragging.theta = dragging._baseTheta + turn;
   setPointer(e);

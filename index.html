@@ -21,17 +21,23 @@
 </head>
 <body>
 
-  <!-- ── LOGO (fixed, global) ── -->
-  <a href="#works" class="ui-logo" id="site-logo" data-panel="works" aria-label="首页">
-    <img src="assets/logo.svg" alt="谭加奇" />
-  </a>
+  <!-- ── TOP BAR: logo + tabs ── -->
+  <nav class="ui-topbar" role="navigation" aria-label="页面切换">
+    <a href="#works" class="ui-logo" id="site-logo" data-panel="works" aria-label="首页">
+      <img src="assets/logo.svg" alt="谭加奇" />
+    </a>
+    <div class="ui-tabs" data-active="works">
+      <a href="#works" class="ui-tab active" data-panel="works" id="tab-works">作品</a>
+      <a href="#cv"    class="ui-tab"        data-panel="cv"    id="tab-cv">简历</a>
+    </div>
+  </nav>
 
-  <!-- ── Right pill — filter on works, download on cv ── -->
-  <button class="ui-pill ui-pill-right" id="filter-btn" aria-haspopup="listbox" aria-expanded="false">
+  <!-- ── Bottom pills — filter on works, download on cv ── -->
+  <button class="ui-pill ui-pill-bottom" id="filter-btn" aria-haspopup="listbox" aria-expanded="false">
     <span id="filter-label">全部</span>
     <span class="ui-pill-chevron">▾</span>
   </button>
-  <a class="ui-pill ui-pill-right" id="dl-btn"
+  <a class="ui-pill ui-pill-bottom" id="dl-btn"
      href="UX-谭加奇-27届-天津大学.pdf" download style="display:none;">
     ↓ 下载简历
   </a>
@@ -194,11 +200,6 @@
 
   </div><!-- /.app-track -->
 
-  <!-- ── BOTTOM TABS (fixed, global) ── -->
-  <div class="ui-tabs" data-active="works" role="navigation" aria-label="页面切换">
-    <a href="#works" class="ui-tab active" data-panel="works" id="tab-works">作品</a>
-    <a href="#cv"    class="ui-tab"        data-panel="cv"    id="tab-cv">简历</a>
-  </div>
 
   <!-- hover tag follows the cursor over a sticker -->
   <div id="sticker-tag" class="sticker-tag" aria-hidden="true"></div>

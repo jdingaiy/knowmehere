@@ -53,17 +53,41 @@ body {
 
 /* ─── FIXED UI SHELL ─── */
 
-/* Logo — top left */
-.ui-logo {
+/* ─── TOP NAVIGATION BAR ─── */
+.ui-topbar {
   position: fixed;
-  top: 22px; left: 24px;
+  top: 0; left: 0; right: 0;
+  height: 72px;
+  z-index: 950;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  transition: opacity 0.25s ease;
+}
+.ui-topbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 60%, rgba(0,0,0,0) 100%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 60%, rgba(0,0,0,0) 100%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Logo — nested in top bar */
+.ui-logo {
+  position: relative;
   z-index: 900;
   font-family: var(--font-d);
   font-size: 20px; font-weight: 700;
   color: var(--ink);
   text-decoration: none;
   letter-spacing: -0.5px;
-  width: 44px; height: 44px;
+  width: 32px; height: 32px;
   display: flex; align-items: center; justify-content: center;
   transition: transform 0.18s ease, opacity 0.18s ease;
 }
@@ -77,78 +101,9 @@ body {
   -webkit-user-drag: none;
 }
 
-/* Pill button — shared style for filter + info buttons */
-.ui-pill {
-  position: fixed;
-  top: 22px;
-  z-index: 900;
-  height: 44px;
-  display: flex; align-items: center; gap: 6px;
-  padding: 0 16px;
-  border-radius: 100px;
-  background: rgba(255,255,255,0.45);
-  border: none;
-  font-family: var(--font);
-  font-size: 13px; font-weight: 500;
-  color: var(--ink-2);
-  cursor: pointer;
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  box-shadow: 0 4px 18px rgba(60,55,50,0.10);
-  transition: background 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
-  white-space: nowrap;
-  text-decoration: none;
-  user-select: none;
-}
-.ui-pill:hover { background: rgba(255,255,255,0.62); box-shadow: 0 6px 22px rgba(60,55,50,0.14); color: var(--ink); }
-.ui-pill-right { right: 24px; }
-.ui-pill-chevron { font-size: 10px; opacity: 0.5; transition: transform 0.2s ease; }
-.ui-pill.open .ui-pill-chevron { transform: rotate(180deg); }
-
-/* Dropdown panel */
-.ui-dropdown {
-  position: fixed;
-  top: 76px; right: 24px;
-  z-index: 899;
-  background: rgba(255,255,255,0.55);
-  border: none;
-  border-radius: 16px;
-  padding: 6px;
-  backdrop-filter: blur(22px) saturate(160%);
-  -webkit-backdrop-filter: blur(22px) saturate(160%);
-  box-shadow: 0 10px 34px rgba(60,55,50,0.14);
-  display: flex; flex-direction: column; gap: 2px;
-  opacity: 0; visibility: hidden; transform: translateY(-8px);
-  transition: all 0.2s ease;
-  min-width: 140px;
-}
-.ui-dropdown.open {
-  opacity: 1; visibility: visible; transform: translateY(0);
-}
-.ui-drop-item {
-  padding: 9px 14px;
-  border-radius: 8px;
-  font-size: 13px; font-weight: 500;
-  color: var(--ink-2);
-  cursor: pointer;
-  transition: background 0.12s ease;
-  display: flex; align-items: center; gap: 8px;
-}
-.ui-drop-item:hover { background: rgba(255,255,255,0.55); color: var(--ink); }
-.ui-drop-item.active { color: var(--ink); font-weight: 600; }
-.ui-drop-item .dot {
-  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-}
-.ui-drop-divider {
-  height: 1px; background: var(--rule); margin: 4px 8px;
-}
-
-/* ─── BOTTOM FLOATING TAB ─── */
-/* Bottom tabs: no outer chrome. Just two text labels with a single
-   frosted-glass pill that slides between them as the active indicator. */
+/* Tabs switcher — nested in top bar */
 .ui-tabs {
-  position: fixed;
-  bottom: 26px; left: 50%; transform: translateX(-50%);
+  position: relative;
   z-index: 900;
   display: flex;
   width: 180px;          /* two equal-width tabs (90px each) */
@@ -162,11 +117,11 @@ body {
   top: 0; bottom: 0; left: 0;
   width: 50%;            /* one tab wide */
   border-radius: 100px;
-  background: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.45);
   border: none;
   backdrop-filter: blur(18px) saturate(160%);
   -webkit-backdrop-filter: blur(18px) saturate(160%);
-  box-shadow: 0 6px 22px rgba(60,55,50,0.12);
+  box-shadow: 0 4px 18px rgba(60,55,50,0.06);
   transform: translateX(0);
   transition: transform 0.45s cubic-bezier(0.65, 0.05, 0.36, 1);
   z-index: -1;
@@ -186,7 +141,82 @@ body {
   user-select: none;
 }
 .ui-tab:hover  { color: var(--ink-2); }
-.ui-tab.active { color: var(--ink); }
+.ui-tab.active { color: var(--accent); }
+
+/* Pill button — shared style for filter + info buttons, centered at the bottom */
+.ui-pill {
+  position: fixed;
+  z-index: 900;
+  height: 44px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 20px;
+  border-radius: 100px;
+  background: rgba(255,255,255,0.45);
+  border: none;
+  font-family: var(--font);
+  font-size: 13px; font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: 0 4px 18px rgba(60,55,50,0.10);
+  transition: background 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  white-space: nowrap;
+  text-decoration: none;
+  user-select: none;
+}
+.ui-pill:hover { background: rgba(255,255,255,0.62); box-shadow: 0 6px 22px rgba(60,55,50,0.14); color: var(--ink); }
+.ui-pill-bottom {
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.ui-pill-bottom:hover {
+  transform: translateX(-50%) translateY(-2px);
+}
+.ui-pill-chevron { font-size: 10px; opacity: 0.5; transition: transform 0.2s ease; }
+.ui-pill.open .ui-pill-chevron { transform: rotate(180deg); }
+
+/* Dropdown panel — centered at bottom, opening upwards */
+.ui-dropdown {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  z-index: 899;
+  background: rgba(255,255,255,0.55);
+  border: none;
+  border-radius: 16px;
+  padding: 6px;
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  box-shadow: 0 10px 34px rgba(60,55,50,0.14);
+  display: flex; flex-direction: column; gap: 2px;
+  opacity: 0; visibility: hidden;
+  transition: all 0.2s ease;
+  min-width: 140px;
+}
+.ui-dropdown.open {
+  opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0);
+}
+.ui-drop-item {
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 13px; font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background 0.12s ease;
+  display: flex; align-items: center; gap: 8px;
+}
+.ui-drop-item:hover { background: rgba(255,255,255,0.55); color: var(--ink); }
+.ui-drop-item.active { color: var(--ink); font-weight: 600; }
+.ui-drop-item .dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+.ui-drop-divider {
+  height: 1px; background: var(--rule); margin: 4px 8px;
+}
+
 
 /* ─── DETAIL PAGE (modal) ─── */
 .modal-overlay {
@@ -423,10 +453,9 @@ body.modal-open .modal-close-btn { opacity: 1; pointer-events: auto; }
 .dp-section-label::after { content:''; flex:1; height:1px; background:var(--rule); }
 
 /* ── Hide floating UI while detail page is open ── */
-body.modal-open .ui-logo,
-body.modal-open .ui-pill-right,
+body.modal-open .ui-topbar,
+body.modal-open .ui-pill,
 body.modal-open .ui-dropdown,
-body.modal-open .ui-tabs,
 body.modal-open .drag-hint,
 body.modal-open .sticker-tag {
   opacity: 0 !important;

@@ -11,20 +11,22 @@
 </head>
 <body class="cv-page">
 
-  <!-- ── LOGO ── -->
-  <a href="index.html" class="ui-logo" aria-label="返回首页">谭<span>.</span></a>
+  <!-- ── TOP BAR: logo + tabs ── -->
+  <nav class="ui-topbar" role="navigation" aria-label="页面切换">
+    <a href="index.html" class="ui-logo" aria-label="返回首页">
+      <img src="assets/logo.svg" alt="谭加奇" />
+    </a>
+    <div class="ui-tabs" data-active="cv">
+      <a href="index.html" class="ui-tab"        id="tab-works">作品</a>
+      <a href="cv.html"    class="ui-tab active" id="tab-cv">简历</a>
+    </div>
+  </nav>
 
-  <!-- ── INFO / DOWNLOAD button (top right, same style as filter) ── -->
+  <!-- ── Bottom pill — download ── -->
   <a href="UX-谭加奇-27届-天津大学.pdf"
-     download class="ui-pill ui-pill-right" id="dl-btn">
+     download class="ui-pill ui-pill-bottom" id="dl-btn">
     ↓ 下载简历
   </a>
-
-  <!-- ── BOTTOM TABS ── -->
-  <div class="ui-tabs" role="navigation" aria-label="页面切换">
-    <a href="index.html" class="ui-tab"        id="tab-works">作品</a>
-    <a href="cv.html"    class="ui-tab active" id="tab-cv">简历</a>
-  </div>
 
   <!-- ── CONTENT ── -->
   <div class="cv-wrap" role="main">
