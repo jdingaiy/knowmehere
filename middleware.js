@@ -10,8 +10,9 @@
  */
 
 export const config = {
-  // 拦截所有请求，排除 middleware 自身与常见静态元数据。
-  matcher: ['/((?!_next/|favicon.ico).*)'],
+  // 拦截所有请求；只放行 Vercel 内部路径。
+  // 注意：不能排除 .png/.js，因为 sixteen 的图片和数据文件正是要拦的对象。
+  matcher: ['/((?!_vercel/).*)'],
 };
 
 // sixteen 的敏感文件：对外密码下全部 404。

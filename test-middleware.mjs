@@ -3,7 +3,7 @@
  * 覆盖：无密码放行、错密码401、full全放、limited挡sixteen三类文件、limited放行普通文件。
  */
 import assert from 'node:assert';
-import mw from './middleware.mjs';
+import mw from './middleware.js';
 
 const basic = (pw) => 'Basic ' + Buffer.from('u:' + pw).toString('base64');
 const req = (path, pw) =>
