@@ -115,36 +115,7 @@ const STICKERS_DATA = [
       'assets/projects/ikea-guide/ikea%20shopping%20buddy/6.png',
     ],
   },
-  {
-    id: 'nova-chat',
-    category: 'portfolio',
-    surface: 'wall',
-    name: '小红书风险感知平台',
-    sticker: 'assets/stickers/nova-chat.png',
-    tags: ['B2B', 'Agent', '中台产品', '小红书'],
-    description: '将搜索巡检、风险研判及处置报告等核心运营能力解构为标准化 Skills，依托 Nova Chat 构建 7×24 风险运营专家 Agent，解决跨平台操作零散和技能沉淀难的痛点。',
-    role: 'UX 实习生（小红书）· 独立主导 MVP 设计',
-    period: '2026.03',
-    metrics: [
-      { value: '↓40%', label: '核心操作链路时长' },
-      { value: '↓30%', label: '员工上手培训时间' },
-    ],
-    demoType: null, demoUrl: null,
-    longImages: [
-      'assets/projects/nova-chat/B%20(1).png',
-      'assets/projects/nova-chat/B%20(2).png',
-      'assets/projects/nova-chat/B%20(3).png',
-      'assets/projects/nova-chat/B%20(4).png',
-      'assets/projects/nova-chat/B%20(5).png',
-      'assets/projects/nova-chat/B%20(6).png',
-      'assets/projects/nova-chat/B%20(7).png',
-      'assets/projects/nova-chat/B%20(8).png',
-    ],
-    heroEmoji: '🛡️',
-    ix: 0.14, iy: 0.48, rot: 6,
-    size: 'small',
-  },
-  // sixteen (小红书 NDA 项目) 已拆到 js/stickers-sixteen.js，由 middleware 按密码放行/拦截。
+  // 部分项目已拆到 js/stickers-private.js，由 middleware 按密码放行/拦截。
 
   // ── STUDIO ─────────────────────────────────────
   {

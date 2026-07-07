@@ -15,12 +15,26 @@ export const config = {
   matcher: ['/((?!_vercel/).*)'],
 };
 
-// sixteen 的敏感文件：对外密码下全部 404。
-function isSixteenAsset(pathname) {
+// 去敏（对外密码）模式下要 404 的敏感文件。新增保密项目就往这里加。
+// 前缀用 startsWith，精确路径用全等。注意 encodeURI 后空格是 %20（nova-chat 图片名）。
+const PRIVATE_PREFIXES = [
+  '/assets/projects/sixteen/',
+  '/assets/projects/nova-chat/',
+  '/assets/stickers/ip stickers/keaitianqi/',
+  '/assets/stickers/ip%20stickers/keaitianqi/',
+];
+const PRIVATE_EXACT = new Set([
+  '/assets/stickers/sixteen.png',
+  '/assets/stickers/nova-chat.png',
+  '/js/stickers-private.js',
+  '/assets/ip-manifest-private.json',
+]);
+
+function isPrivateAsset(pathname) {
+  const p = decodeURIComponent(pathname);
   return (
-    pathname.startsWith('/assets/projects/sixteen/') ||
-    pathname === '/assets/stickers/sixteen.png' ||
-    pathname === '/js/stickers-sixteen.js'
+    PRIVATE_EXACT.has(pathname) || PRIVATE_EXACT.has(p) ||
+    PRIVATE_PREFIXES.some((pre) => pathname.startsWith(pre) || p.startsWith(pre))
   );
 }
 
@@ -51,8 +65,8 @@ export default function middleware(request) {
 
   if (!tier) return unauthorized();
 
-  // 对外密码：sixteen 的一切都当不存在。
-  if (tier === 'limited' && isSixteenAsset(new URL(request.url).pathname)) {
+  // 对外密码：所有保密项目的一切都当不存在。
+  if (tier === 'limited' && isPrivateAsset(new URL(request.url).pathname)) {
     return new Response('Not Found', { status: 404 });
   }
 

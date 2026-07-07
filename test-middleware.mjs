@@ -25,16 +25,28 @@ assert.strictEqual(mw(req('/', 'wrong')).status, 401, 'wrong pw → 401');
 // 3) full 密码 → 任何东西都放行
 assert.strictEqual(mw(req('/', 'fullpass')), undefined, 'full → home pass');
 assert.strictEqual(mw(req('/assets/projects/sixteen/sixteen1.png', 'fullpass')), undefined, 'full → sixteen img pass');
-assert.strictEqual(mw(req('/js/stickers-sixteen.js', 'fullpass')), undefined, 'full → sixteen data pass');
+assert.strictEqual(mw(req('/js/stickers-private.js', 'fullpass')), undefined, 'full → private data pass');
+assert.strictEqual(mw(req('/assets/projects/nova-chat/B%20(1).png', 'fullpass')), undefined, 'full → nova img pass');
 
-// 4) limited 密码 → sixteen 三类文件全 404
-assert.strictEqual(mw(req('/assets/projects/sixteen/sixteen1.png', 'limitedpass')).status, 404, 'limited → sixteen img 404');
-assert.strictEqual(mw(req('/assets/stickers/sixteen.png', 'limitedpass')).status, 404, 'limited → sixteen sticker 404');
-assert.strictEqual(mw(req('/js/stickers-sixteen.js', 'limitedpass')).status, 404, 'limited → sixteen data 404');
+// 4) limited 密码 → 三个保密项目的文件全 404
+const block404 = [
+  '/assets/projects/sixteen/sixteen1.png',
+  '/assets/stickers/sixteen.png',
+  '/js/stickers-private.js',
+  '/assets/projects/nova-chat/B%20(1).png',   // 空格被 encodeURI 成 %20
+  '/assets/stickers/nova-chat.png',
+  '/assets/ip-manifest-private.json',
+  '/assets/stickers/ip%20stickers/keaitianqi/Object-1.png', // 编码空格
+  '/assets/stickers/ip stickers/keaitianqi/Object.png',     // 未编码空格
+];
+for (const p of block404) {
+  assert.strictEqual(mw(req(p, 'limitedpass')).status, 404, `limited → 404: ${p}`);
+}
 
 // 5) limited 密码 → 普通内容放行
 assert.strictEqual(mw(req('/', 'limitedpass')), undefined, 'limited → home pass');
 assert.strictEqual(mw(req('/js/stickers-data.js', 'limitedpass')), undefined, 'limited → common data pass');
-assert.strictEqual(mw(req('/assets/projects/nova-chat/nova-chat1.png', 'limitedpass')), undefined, 'limited → other project pass');
+assert.strictEqual(mw(req('/assets/ip-manifest.json', 'limitedpass')), undefined, 'limited → public manifest pass');
+assert.strictEqual(mw(req('/assets/stickers/ip%20stickers/tianjin/x.png', 'limitedpass')), undefined, 'limited → other IP pass');
 
 console.log('✓ all middleware checks passed');
