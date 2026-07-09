@@ -74,8 +74,8 @@ function loginPage(errMsg) {
   .bg::after{content:'';position:absolute;inset:0;background:rgba(20,28,18,.28)}
   /* 整体略微下移 */
   .card{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center;
-    gap:22px;margin-top:14vh}
-  .logo{width:60px;height:60px}
+    gap:14px;margin-top:14vh}
+  .logo{width:60px;height:60px;margin-bottom:26px}
   .logo svg{width:100%;height:100%;display:block;filter:drop-shadow(0 2px 12px rgba(0,0,0,.4))}
   form{width:100%;display:flex;flex-direction:column;align-items:center;gap:12px}
   input{width:100%;font-size:16px;padding:14px 16px;text-align:center;color:#fff;
@@ -93,15 +93,15 @@ function loginPage(errMsg) {
     box-shadow:0 6px 20px rgba(57,31,228,.4)}
   button:active{background:#2e19bd}
   /* 提示贴近按钮 */
-  .hint{font-size:11.5px;color:rgba(255,255,255,.8);text-align:center;margin-top:-12px;
+  .hint{font-size:11.5px;color:rgba(255,255,255,.8);text-align:center;margin-top:-4px;
     text-shadow:0 1px 3px rgba(0,0,0,.45)}
 </style></head><body>
   <div class="bg"></div>
   <div class="card">
     <div class="logo"><svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><path d="M177.143 22.8571H200V71.4286H176.669C175.483 85.8982 172.061 100.121 166.487 113.577C159.452 130.562 149.138 145.996 136.138 158.996C123.138 171.996 107.705 182.309 90.7199 189.344C74.7962 195.94 57.7995 199.534 40.5887 199.958L37.1429 200H0V151.429H100C115.78 151.429 128.571 138.637 128.571 122.857V71.4286H0V22.8571H128.571V0H177.143V22.8571Z" fill="#391FE4"/></svg></div>
-    <form method="POST" action="/__auth">
+    <form method="POST" action="/__auth" novalidate>
       <input name="pw" type="password" inputmode="text" autocomplete="current-password"
-        placeholder="输入访问密码" autofocus required>
+        placeholder="输入访问密码" autofocus>
       <div class="err">${err}</div>
       <button type="submit">进入</button>
     </form>
@@ -139,6 +139,7 @@ export default async function middleware(request) {
   if (request.method === 'POST' && url.pathname === '/__auth') {
     const form = await request.formData();
     const pw = (form.get('pw') || '').toString();
+    if (!pw) return loginPage('请填写该字段');
     if (!tierFor(pw, PW_FULL, PW_LIMITED)) return loginPage('密码不正确，请重试');
     return new Response(null, {
       status: 303,
