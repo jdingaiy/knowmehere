@@ -27,7 +27,14 @@ const noPw = await mw(req('/'));
 assert.strictEqual(noPw.status, 401, 'no pw → 401 login page');
 assert.strictEqual(noPw.headers.get('www-authenticate'), null, '不应再发 WWW-Authenticate（否则弹原生框）');
 assert.match(noPw.headers.get('content-type') || '', /text\/html/, 'login page is html');
+const noPwHtml = await noPw.text();
+assert.match(noPwHtml, /forest_pan\.jpg/, '登录页含森林背景');
+assert.match(noPwHtml, /<svg/, '登录页含 logo');
+assert.doesNotMatch(noPwHtml, /谭加奇 · 作品集/, '登录页不含标题文字');
 assert.strictEqual((await mw(req('/', 'wrong'))).status, 401, 'wrong pw → 401');
+
+// 2b) 登录页背景图：未登录也放行（否则背景空白）
+assert.strictEqual(await mw(req('/assets/texture/forest_pan.jpg')), undefined, '未登录 → 背景图放行');
 
 // 3) full 密码 → 任何东西都放行
 assert.strictEqual(await mw(req('/', 'fullpass')), undefined, 'full → home pass');
