@@ -67,14 +67,16 @@ function loginPage(errMsg) {
   body{margin:0;display:flex;align-items:center;justify-content:center;padding:24px;
     font-family:-apple-system,BlinkMacSystemFont,'Noto Sans SC',sans-serif;
     color:#fff;overflow:hidden}
-  /* 森林背景：模糊 + 压暗，保证前景磨砂框可读 */
+  /* 森林背景：模糊 + 压暗，保证前景可读 */
   .bg{position:fixed;inset:-40px;z-index:-2;
     background:url('/assets/texture/forest_pan.jpg') center/cover no-repeat;
     filter:blur(18px) brightness(.62) saturate(1.05);transform:scale(1.08)}
   .bg::after{content:'';position:absolute;inset:0;background:rgba(20,28,18,.28)}
-  .card{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center;gap:18px}
+  /* 整体略微下移 */
+  .card{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center;
+    gap:22px;margin-top:14vh}
   .logo{width:60px;height:60px}
-  .logo svg{width:100%;height:100%;display:block;filter:drop-shadow(0 2px 10px rgba(0,0,0,.35))}
+  .logo svg{width:100%;height:100%;display:block;filter:drop-shadow(0 2px 12px rgba(0,0,0,.4))}
   form{width:100%;display:flex;flex-direction:column;align-items:center;gap:12px}
   input{width:100%;font-size:16px;padding:14px 16px;text-align:center;color:#fff;
     border:1.5px solid rgba(255,255,255,.45);border-radius:14px;
@@ -85,17 +87,18 @@ function loginPage(errMsg) {
   /* 报错位：始终占位，出错才显字 → 不抖动 */
   .err{min-height:18px;font-size:12.5px;line-height:18px;color:#ff6b6b;text-align:center;
     text-shadow:0 1px 3px rgba(0,0,0,.4)}
-  button{width:100%;font-size:15px;font-weight:500;padding:14px;color:#fff;cursor:pointer;
-    border:1px solid rgba(255,255,255,.5);border-radius:18px;
-    background:rgba(255,255,255,.22);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-    box-shadow:0 4px 20px rgba(0,0,0,.15)}
-  button:active{background:rgba(255,255,255,.3)}
-  .hint{font-size:11.5px;color:rgba(255,255,255,.75);text-align:center;
-    text-shadow:0 1px 3px rgba(0,0,0,.4)}
+  /* 蓝色实心按钮 */
+  button{width:100%;font-size:15px;font-weight:600;padding:14px;color:#fff;cursor:pointer;
+    border:0;border-radius:18px;background:var(--accent);
+    box-shadow:0 6px 20px rgba(57,31,228,.4)}
+  button:active{background:#2e19bd}
+  /* 提示贴近按钮 */
+  .hint{font-size:11.5px;color:rgba(255,255,255,.8);text-align:center;margin-top:-12px;
+    text-shadow:0 1px 3px rgba(0,0,0,.45)}
 </style></head><body>
   <div class="bg"></div>
   <div class="card">
-    <div class="logo"><svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><path d="M177.143 22.8571H200V71.4286H176.669C175.483 85.8982 172.061 100.121 166.487 113.577C159.452 130.562 149.138 145.996 136.138 158.996C123.138 171.996 107.705 182.309 90.7199 189.344C74.7962 195.94 57.7995 199.534 40.5887 199.958L37.1429 200H0V151.429H100C115.78 151.429 128.571 138.637 128.571 122.857V71.4286H0V22.8571H128.571V0H177.143V22.8571Z" fill="#fff"/></svg></div>
+    <div class="logo"><svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><path d="M177.143 22.8571H200V71.4286H176.669C175.483 85.8982 172.061 100.121 166.487 113.577C159.452 130.562 149.138 145.996 136.138 158.996C123.138 171.996 107.705 182.309 90.7199 189.344C74.7962 195.94 57.7995 199.534 40.5887 199.958L37.1429 200H0V151.429H100C115.78 151.429 128.571 138.637 128.571 122.857V71.4286H0V22.8571H128.571V0H177.143V22.8571Z" fill="#391FE4"/></svg></div>
     <form method="POST" action="/__auth">
       <input name="pw" type="password" inputmode="text" autocomplete="current-password"
         placeholder="输入访问密码" autofocus required>
