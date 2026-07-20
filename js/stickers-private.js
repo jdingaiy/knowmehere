@@ -57,6 +57,7 @@ STICKERS_DATA.push(
       'assets/projects/nova-chat/B%20(6).png',
       'assets/projects/nova-chat/B%20(7).png',
       'assets/projects/nova-chat/B%20(8).png',
+      'assets/projects/nova-chat/B%20(9).png',
     ],
     heroEmoji: '🛡️',
     ix: 0.14, iy: 0.48, rot: 6,
