@@ -17,16 +17,15 @@ export const config = {
 };
 
 // 去敏（对外密码）模式下要 404 的敏感文件。新增保密项目就往这里加。
-// 前缀用 startsWith，精确路径用全等。注意 encodeURI 后空格是 %20（nova-chat 图片名）。
+// 前缀用 startsWith，精确路径用全等。
 const PRIVATE_PREFIXES = [
   '/assets/projects/sixteen/',
   '/assets/projects/nova-chat/',
-  '/assets/stickers/ip stickers/keaitianqi/',
-  '/assets/stickers/ip%20stickers/keaitianqi/',
+  '/assets/stickers/ip-stickers/keaitianqi/',
 ];
 const PRIVATE_EXACT = new Set([
-  '/assets/stickers/sixteen.png',
-  '/assets/stickers/nova-chat.png',
+  '/assets/stickers/sixteen.webp',
+  '/assets/stickers/nova-chat.webp',
   '/js/stickers-private.js',
   '/assets/ip-manifest-private.json',
 ]);

@@ -1,5 +1,6 @@
 # Local dev server scratch file
 _srv.js
+_srv.cjs
 
 # Claude Code working dir (memory, history, plans) — not part of the project
 .claude/

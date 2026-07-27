@@ -1,13 +1,20 @@
 // scripts/build-ip-manifest.js
-// Walk assets/stickers/ip stickers/<ip>/ and assets/projects/ip/<ip>/
-// to produce assets/ip-manifest.json. Run after adding/removing IP assets:
+// Walk assets/stickers/ip-stickers/<ip>/ and assets/projects/ip/<ip>/
+// to produce assets/ip-manifest.json (public) and
+// assets/ip-manifest-private.json (full-password only).
+// Run after adding/removing IP assets:
 //   node scripts/build-ip-manifest.js
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
 
-const STICKER_ROOT = path.join('assets', 'stickers', 'ip stickers');
+const STICKER_ROOT = path.join('assets', 'stickers', 'ip-stickers');
 const PROJECT_ROOT = path.join('assets', 'projects', 'ip');
-const OUT = path.join('assets', 'ip-manifest.json');
+const OUT_PUBLIC = path.join('assets', 'ip-manifest.json');
+const OUT_PRIVATE = path.join('assets', 'ip-manifest-private.json');
+
+// 保密 IP：只对完整密码可见。middleware 会对对外密码 404 私有 manifest
+// 以及这些 IP 的图片文件夹。name → 显示名（hover tag / 详情页）。
+const PRIVATE_IPS = { keaitianqi: '可爱天气' };
 
 const IMG_RE = /\.(png|jpg|jpeg|webp)$/i;
 
@@ -39,15 +46,20 @@ function listImages(p) {
 }
 
 const ipNames = listDirs(STICKER_ROOT);
-const out = { ips: [] };
+const pub = { ips: [] }, prv = { ips: [] };
 for (const name of ipNames) {
   const stickers   = listImages(path.join(STICKER_ROOT, name));
   const longImages = listImages(path.join(PROJECT_ROOT, name));
-  out.ips.push({ name, stickers, longImages });
+  if (PRIVATE_IPS[name]) {
+    prv.ips.push({ name, label: PRIVATE_IPS[name], stickers, longImages });
+  } else {
+    pub.ips.push({ name, stickers, longImages });
+  }
 }
-fs.writeFileSync(OUT, JSON.stringify(out, null, 2));
-console.log(`wrote ${OUT}`);
-console.log(`  IPs: ${out.ips.length}`);
-for (const ip of out.ips) {
+fs.writeFileSync(OUT_PUBLIC, JSON.stringify(pub, null, 2));
+fs.writeFileSync(OUT_PRIVATE, JSON.stringify(prv, null, 2));
+console.log(`wrote ${OUT_PUBLIC} (${pub.ips.length} IPs)`);
+console.log(`wrote ${OUT_PRIVATE} (${prv.ips.length} private IPs)`);
+for (const ip of [...pub.ips, ...prv.ips]) {
   console.log(`  - ${ip.name}: ${ip.stickers.length} stickers, ${ip.longImages.length} long images`);
 }

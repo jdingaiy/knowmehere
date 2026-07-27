@@ -38,20 +38,19 @@ assert.strictEqual(await mw(req('/assets/texture/forest_pan.jpg')), undefined, '
 
 // 3) full 密码 → 任何东西都放行
 assert.strictEqual(await mw(req('/', 'fullpass')), undefined, 'full → home pass');
-assert.strictEqual(await mw(req('/assets/projects/sixteen/sixteen1.png', 'fullpass')), undefined, 'full → sixteen img pass');
+assert.strictEqual(await mw(req('/assets/projects/sixteen/long/1.webp', 'fullpass')), undefined, 'full → sixteen img pass');
 assert.strictEqual(await mw(req('/js/stickers-private.js', 'fullpass')), undefined, 'full → private data pass');
-assert.strictEqual(await mw(req('/assets/projects/nova-chat/B%20(1).png', 'fullpass')), undefined, 'full → nova img pass');
+assert.strictEqual(await mw(req('/assets/projects/nova-chat/long/1.webp', 'fullpass')), undefined, 'full → nova img pass');
 
 // 4) limited 密码 → 三个保密项目的文件全 404
 const block404 = [
-  '/assets/projects/sixteen/sixteen1.png',
-  '/assets/stickers/sixteen.png',
+  '/assets/projects/sixteen/long/1.webp',
+  '/assets/stickers/sixteen.webp',
   '/js/stickers-private.js',
-  '/assets/projects/nova-chat/B%20(1).png',   // 空格被 encodeURI 成 %20
-  '/assets/stickers/nova-chat.png',
+  '/assets/projects/nova-chat/long/1.webp',
+  '/assets/stickers/nova-chat.webp',
   '/assets/ip-manifest-private.json',
-  '/assets/stickers/ip%20stickers/keaitianqi/Object-1.png', // 编码空格
-  '/assets/stickers/ip stickers/keaitianqi/Object.png',     // 未编码空格
+  '/assets/stickers/ip-stickers/keaitianqi/Object-1.webp',
 ];
 for (const p of block404) {
   assert.strictEqual((await mw(req(p, 'limitedpass'))).status, 404, `limited → 404: ${p}`);
@@ -61,10 +60,10 @@ for (const p of block404) {
 assert.strictEqual(await mw(req('/', 'limitedpass')), undefined, 'limited → home pass');
 assert.strictEqual(await mw(req('/js/stickers-data.js', 'limitedpass')), undefined, 'limited → common data pass');
 assert.strictEqual(await mw(req('/assets/ip-manifest.json', 'limitedpass')), undefined, 'limited → public manifest pass');
-assert.strictEqual(await mw(req('/assets/stickers/ip%20stickers/tianjin/x.png', 'limitedpass')), undefined, 'limited → other IP pass');
+assert.strictEqual(await mw(req('/assets/stickers/ip-stickers/tianjin/x.webp', 'limitedpass')), undefined, 'limited → other IP pass');
 
 // 6) cookie 登录（表单提交后的实际路径）→ 与 Basic 等效
 assert.strictEqual(await mw(reqCookie('/', 'fullpass')), undefined, 'cookie full → pass');
-assert.strictEqual((await mw(reqCookie('/assets/projects/sixteen/sixteen1.png', 'limitedpass'))).status, 404, 'cookie limited → sixteen 404');
+assert.strictEqual((await mw(reqCookie('/assets/projects/sixteen/long/1.webp', 'limitedpass'))).status, 404, 'cookie limited → sixteen 404');
 
 console.log('✓ all middleware checks passed');

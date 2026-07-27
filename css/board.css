@@ -80,3 +80,57 @@
   -webkit-overflow-scrolling: touch;
   background: var(--white);
 }
+/* ============================================
+   LOADER — 白底开场
+   水注入 logo 视频（~2.5s）+ 问候文字逐字浮现（与视频同长），
+   整体停 1s 后文字先隐去，白底模糊放大，化作白雾消散。
+   ============================================ */
+#loader {
+  position: fixed; inset: 0;
+  z-index: 2000;
+  overflow: hidden;
+  background: #ffffff;
+  display: flex; align-items: center; justify-content: center;
+  will-change: opacity, transform;
+  /* 只动 opacity + transform（合成层完成，不触发逐帧重绘）。
+     不做 blur：白底上模糊不可见，却是退出卡顿的主因。 */
+  transition: opacity 1s ease, transform 1s ease;
+}
+#loader.done {
+  opacity: 0;
+  transform: scale(1.06);
+  pointer-events: none;
+}
+
+.ld-center {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 48px;
+  transition: opacity 0.35s ease;
+}
+#loader.done .ld-center { opacity: 0; }  /* logo + 文字先消失 */
+
+.ld-video {
+  width: min(60px, 12vw);
+  height: auto;
+  display: block;
+}
+
+.ld-hi {
+  font-family: var(--font-d);
+  font-size: 18px; font-weight: 500;
+  letter-spacing: 0.2px;
+  color: var(--ink);
+  margin: 0;
+}
+/* 逐字浮现：18 字符 × 33ms + 0.4s ≈ 1s，与加速后的视频一致 */
+.ld-hi span {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: ld-char 0.4s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+  animation-delay: calc(var(--i) * 33ms);
+}
+@keyframes ld-char {
+  to { opacity: 1; transform: translateY(0); }
+}

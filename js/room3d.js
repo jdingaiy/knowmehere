@@ -88,7 +88,16 @@ let hintTimer = null, hintActive = null, hintStart = 0;
 const DRAG_LIFT = 0.55;    // how high a dragged sticker pops up off the cylinder
 const REST_LIFT = 0.005;   // resting lift just off the surface
 let container, modalApi, tagEl;
-const texLoader = new THREE.TextureLoader();
+
+/* ---------- loading manager + reveal (intro animation) state ---------- */
+let onProgressCb = null, onReadyCb = null;
+let mgrBusy = false, stickersAdded = false, revealed = false;
+let _revealPose = null;
+const loadMgr = new THREE.LoadingManager();
+loadMgr.onStart = () => { mgrBusy = true; };
+loadMgr.onLoad  = () => { mgrBusy = false; maybeReveal(); };
+loadMgr.onProgress = (url, loaded, total) => { if (onProgressCb) onProgressCb(loaded, total); };
+const texLoader = new THREE.TextureLoader(loadMgr);
 
 /* ---------- pole: real PBR-ish material with a fixed light ---------- */
 const POLE_TEX = 'assets/texture/gravel_embedded_concrete_2k.blend/textures/gravel_embedded_concrete_diff_2k.jpg';
@@ -111,7 +120,7 @@ poleMat.userData.goboRepeat = { value: new THREE.Vector2(1.0, 1.0) }; // smaller
 poleMat.userData.goboOffset = { value: new THREE.Vector2(0, 0) };
 poleMat.userData.goboTime = { value: 0 };
 poleMat.userData.goboMap = { value: null };
-poleMat.userData.goboIntensity = { value: 1.7 };
+poleMat.userData.goboIntensity = { value: 0.2 }; // 揭幕时从暗渐亮到 1.7（见 startReveal）
 
 poleMat.onBeforeCompile = (shader) => {
   shader.uniforms.goboRepeat = poleMat.userData.goboRepeat;
@@ -252,34 +261,39 @@ const stickerFrag = `
   uniform vec2 lightMapOffset;
   uniform float lightMapIntensity;
   uniform float time;
+  uniform float appear;
   varying vec2 vUv;
   varying vec3 vWorldPos;
   void main(){
-    if (vUv.x < 0.0 || vUv.x > 1.0 || vUv.y < 0.0 || vUv.y > 1.0) discard;
-    vec4 c = texture2D(map, vUv);
+    // 入场 pop：UV 从贴纸中心向外展开，配合 alpha 淡入
+    float sc = mix(0.55, 1.0, min(appear, 1.0));
+    vec2 uv = (vUv - 0.5) / sc + 0.5;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
+    vec4 c = texture2D(map, uv);
     if (c.a < 0.005) discard;
-    
+
     // Cylindrical projection for seamless lightMap alignment with the pole
     float theta = atan(vWorldPos.x, vWorldPos.z);
     float u_cyl = theta / (2.0 * 3.14159265) + 0.5;
     float v_cyl = (vWorldPos.y / 44.0) + 0.5;
-    
+
     vec2 lightUv = vec2(u_cyl, v_cyl) * lightMapRepeat + lightMapOffset;
     vec4 lightVal = texture2D(lightMap, lightUv);
-    
+
     vec3 sN = normalize(vec3(vWorldPos.x, 0.0, vWorldPos.z));
     vec3 sL = vec3(0.0, 0.0, 1.0); // same front direction as pole
     float sNdotL = dot(sN, sL);
     // Smooth fade matching the pole
     float goboMask = smoothstep(-0.4, 0.8, sNdotL);
-    
+
     vec3 sunColor = vec3(1.0, 0.88, 0.70);
     float lightIntensity = smoothstep(0.20, 0.85, lightVal.r);
     float currentIntensity = lightMapIntensity;
-    
+
     // Only add gobo spots on front face - nothing else changed
     c.rgb += (currentIntensity - 1.0) * lightIntensity * (1.0 - c.rgb) * sunColor * goboMask;
-    
+
+    c.a *= smoothstep(0.0, 0.35, appear);
     gl_FragColor = c;
   }
 `;
@@ -289,6 +303,7 @@ const shadowFrag = `
   uniform sampler2D map;
   uniform float strength;
   uniform float blurPx;
+  uniform float appear;
   varying vec2 vUv;
 
   float rand(vec2 co){
@@ -325,7 +340,7 @@ const shadowFrag = `
     }
     float a = sum / wTot;
     if (a < 0.01) discard;
-    gl_FragColor = vec4(0.0, 0.0, 0.0, strength * a);
+    gl_FragColor = vec4(0.0, 0.0, 0.0, strength * a * smoothstep(0.0, 0.5, appear));
   }
 `;
 
@@ -333,6 +348,8 @@ const shadowFrag = `
 export function initRoom(opts) {
   container = opts.container;
   modalApi  = opts.modalApi;
+  onProgressCb = opts.onProgress || null;
+  onReadyCb    = opts.onReady    || null;
   tagEl     = document.getElementById('sticker-tag');
 
   scene = new THREE.Scene();
@@ -363,6 +380,9 @@ export function initRoom(opts) {
   pointer = new THREE.Vector2();
 
   bindEvents();
+  // 白屏开场期间不渲染被遮住的场景（开场卡顿来源之一）；
+  // 纹理加载回调里的 renderOnce 仍会预热 GPU 上传，startReveal 时 resume()。
+  isPaused = true;
   animate();
 }
 
@@ -654,7 +674,8 @@ export function addStickers(list) {
         lightMapRepeat: { value: new THREE.Vector2(1.0, 1.0) },
         lightMapOffset: { value: new THREE.Vector2(0, 0) },
         lightMapIntensity: { value: 1.45 },
-        time: { value: 0 }
+        time: { value: 0 },
+        appear: { value: revealed ? 1 : 0 }
       },
       vertexShader: stickerVert, fragmentShader: stickerFrag,
       transparent: true, depthWrite: false, depthTest: true,
@@ -665,7 +686,8 @@ export function addStickers(list) {
       uniforms: {
         map:      { value: tex },
         strength: { value: 0.22 },
-        blurPx:   { value: isPhone ? 8.0 : 15.0 }
+        blurPx:   { value: isPhone ? 8.0 : 15.0 },
+        appear:   { value: revealed ? 1 : 0 }
       },
       vertexShader: stickerVert, fragmentShader: shadowFrag,
       transparent: true, depthWrite: false, depthTest: true,
@@ -684,19 +706,22 @@ export function addStickers(list) {
     const mesh = new THREE.Mesh(buildStickerGeometry(theta, y, S), mat);
     mesh.renderOrder = 2 + i;
     world.add(mesh);
-    stickers.push({ mesh, shMesh, data: d, theta, y, S, lift: 0.005, aspect: 1 });
+    stickers.push({ mesh, shMesh, data: d, theta, y, S, lift: 0.005, aspect: 1, appear: revealed ? 1 : 0 });
   });
   // Aim the camera at whichever side of the pole has the most stickers, so
-  // the first paint never lands on an empty back. Also pan vertically to
-  // their centre so the cluster lands in the middle of the viewport.
+  // the first paint never lands on an empty back. During the intro the camera
+  // starts slightly rotated away / lower and tweens to this pose on reveal.
   const best = densestPose();
   if (best) {
-    cameraAngle = best.angle;
+    _revealPose = best;
     const safe = (typeof container !== 'undefined' && container)
       ? safeViewYRange() : CFG.viewYRange;
-    viewY = clamp(best.y, -safe, safe);
+    cameraAngle = best.angle - 0.55;
+    viewY = clamp(best.y + 2.0, -safe, safe);
   }
   renderOnce();
+  stickersAdded = true;
+  maybeReveal();
   // Kick off the click-hint loop on first paint (unless the visitor has
   // already tapped a sticker in a previous session).
   scheduleHint(1200);
@@ -744,7 +769,7 @@ function pickHintCandidate() {
   return pool[Math.floor(Math.random() * pool.length)].s;
 }
 function playHint() {
-  if (hintDone() || rotating || dragging) { scheduleHint(2000); return; }
+  if (hintDone() || rotating || dragging || !revealed) { scheduleHint(2000); return; }
   const s = pickHintCandidate();
   if (!s) { scheduleHint(2000); return; }
   hintActive = s;
@@ -1117,6 +1142,7 @@ function animate() {
 
   syncFlatToView();
   stepHint();
+  stepAppears();
   baseCam();
   renderer.render(scene, camera);
 }
@@ -1135,3 +1161,62 @@ function loadPos(id) {
   try { const r = localStorage.getItem('skP_' + id); return r ? JSON.parse(r) : null; } catch (e) { return null; }
 }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+/* ============ INTRO REVEAL（森林揭幕） ============ */
+// 全部纹理就绪（manager 空闲）且贴纸已建好后触发一次：
+// DOM 遮罩淡出（index.html 的 onReady），场景内相机环绕归位、
+// 树影光斑渐亮、贴纸逐个「啪」上电线杆。
+function maybeReveal() {
+  if (revealed || mgrBusy || !stickersAdded || !scene) return;
+  // onReadyCb 只通知页面「资源就绪」；何时揭幕由页面（loader 节奏）决定，
+  // 页面再调 playReveal() 同步播放场景动画。没有回调则立即揭幕。
+  if (onReadyCb) { onReadyCb(); return; }
+  revealed = true;
+  startReveal();
+}
+export function playReveal() {
+  if (revealed) return;
+  revealed = true;
+  startReveal();
+}
+function startReveal() {
+  resume(); // 渲染循环在白屏期间是暂停的，揭幕时恢复
+  if (onReadyCb) onReadyCb();
+  if (_revealPose) {
+    const safe = safeViewYRange();
+    tweenCameraAngle(_revealPose.angle, 1800);
+    tweenViewY(clamp(_revealPose.y, -safe, safe), 1800);
+  }
+  // 树影光斑像阳光一样渐亮
+  const t0 = performance.now();
+  const FROM = 0.2, TO = 1.7;
+  (function ramp(now) {
+    const k = Math.min(1, (now - t0) / 1400);
+    poleMat.userData.goboIntensity.value = FROM + (TO - FROM) * (1 - Math.pow(1 - k, 3));
+    if (k < 1) requestAnimationFrame(ramp);
+  })(t0);
+  // 贴纸错峰弹出
+  stickers.forEach((s, i) => {
+    if (s.appear >= 1) return;
+    s._appearAt = t0 + 350 + i * 90;
+  });
+}
+function backOut(k) {
+  const c1 = 1.70158, c3 = c1 + 1;
+  return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2);
+}
+function stepAppears() {
+  if (!revealed) return;
+  const now = performance.now();
+  let any = false;
+  for (const s of stickers) {
+    if (s._appearAt == null || s.appear >= 1) continue;
+    any = true;
+    const k = (now - s._appearAt) / 420;
+    if (k < 0) continue;
+    const v = k >= 1 ? 1 : backOut(k);
+    s.appear = Math.min(1.12, Math.max(0, v));
+    if (s.mesh.material.uniforms.appear) s.mesh.material.uniforms.appear.value = s.appear;
+    if (s.shMesh && s.shMesh.material.uniforms.appear) s.shMesh.material.uniforms.appear.value = Math.min(1, s.appear);
+    if (k >= 1) { s.appear = 1; s.mesh.material.uniforms.appear.value = 1; if (s.shMesh) s.shMesh.material.uniforms.appear.value = 1; }
+  }
+}
