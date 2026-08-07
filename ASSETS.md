@@ -24,11 +24,11 @@ IP 插画贴纸放 `assets/stickers/ip-stickers/<ip名>/`，长图放 `assets/pr
 | `tashi` | 它石智航官网 |
 | `ikea-aigc` | 宜家 AIGC 生产引擎 |
 | `ikea-guide` | 宜家虚拟导购助手 |
-| `sixteen` ⚠️保密 | AI 健康打卡 |
-| `nova-chat` ⚠️保密 | 小红书风险感知平台 |
+| `sixteen` | AI 健康打卡 |
+| `nova-chat` | 小红书风险感知平台 |
 | `hci-studio` | 折叠装置 · HCI 研究 |
 
-⚠️ 保密项目的数据在 `js/stickers-private.js`，图片路径要同步加进 `middleware.js` 的 `PRIVATE_PREFIXES / PRIVATE_EXACT`。
+`sixteen` 和 `nova-chat` 的数据在 `js/stickers-private.js`（原 NDA 拆分，全站公开后与公开项目等价）。
 
 ---
 

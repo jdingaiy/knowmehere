@@ -251,7 +251,7 @@
 
   <!-- sticker data (global STICKERS_DATA) -->
   <script src="js/stickers-data.js"></script>
-  <!-- 附加数据：此文件在去敏模式下会被 404，届时 STICKERS_DATA 中相应条目缺席即可。 -->
+  <!-- 附加项目数据（原 NDA 项目，已全站公开） -->
   <script src="js/stickers-private.js"></script>
 
   <!-- modal + UI logic (non-module) -->
@@ -593,7 +593,7 @@
         const r = await fetch('assets/ip-manifest.json', { cache: 'no-cache' });
         if (!r.ok) return [];
         const m = await r.json();
-        // 私有 IP：middleware 在去敏模式下会 404 此文件，那就跳过。
+        // 原私有 IP 清单（全站公开后与公开清单等价，保留拆分以兼容旧逻辑）。
         try {
           const rp = await fetch('assets/ip-manifest-private.json', { cache: 'no-cache' });
           if (rp.ok) {

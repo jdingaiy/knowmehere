@@ -1,9 +1,6 @@
 /**
- * stickers-private.js — 需要「完整密码」才可见的项目（NDA / 保密）。
- * middleware 会对「对外密码」把本文件整个 404，届时 STICKERS_DATA 里就没有这些项目。
- * 必须在 stickers-data.js 之后、board 初始化之前加载。
- *
- * 新增保密项目：在这里 push 一条，并把它的图片路径加进 middleware.js 的 PRIVATE_PATHS。
+ * stickers-private.js — 原「完整密码可见」的 NDA 项目数据。
+ * 2026.07 起全站公开，此文件与 stickers-data.js 等价，仅为保留文件拆分。
  */
 STICKERS_DATA.push(
   {

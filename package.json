@@ -4,7 +4,6 @@
   "scripts": {
     "optimize": "node scripts/optimize-images.mjs",
     "manifest": "node scripts/build-ip-manifest.js",
-    "test": "node test-middleware.mjs",
     "serve": "node _srv.cjs"
   },
   "devDependencies": {

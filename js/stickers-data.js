@@ -120,7 +120,7 @@ const STICKERS_DATA = [
       'assets/projects/ikea-guide/long/7.webp',
     ],
   },
-  // 部分项目已拆到 js/stickers-private.js，由 middleware 按密码放行/拦截。
+  // 部分项目拆在 js/stickers-private.js（原 NDA 拆分，全站公开后等价）。
 
   // ── STUDIO ─────────────────────────────────────
   {

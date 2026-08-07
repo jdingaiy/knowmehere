@@ -1,7 +1,6 @@
 // scripts/build-ip-manifest.js
 // Walk assets/stickers/ip-stickers/<ip>/ and assets/projects/ip/<ip>/
-// to produce assets/ip-manifest.json (public) and
-// assets/ip-manifest-private.json (full-password only).
+// to produce assets/ip-manifest.json 和 assets/ip-manifest-private.json。
 // Run after adding/removing IP assets:
 //   node scripts/build-ip-manifest.js
 import fs from 'node:fs';
@@ -12,8 +11,7 @@ const PROJECT_ROOT = path.join('assets', 'projects', 'ip');
 const OUT_PUBLIC = path.join('assets', 'ip-manifest.json');
 const OUT_PRIVATE = path.join('assets', 'ip-manifest-private.json');
 
-// 保密 IP：只对完整密码可见。middleware 会对对外密码 404 私有 manifest
-// 以及这些 IP 的图片文件夹。name → 显示名（hover tag / 详情页）。
+// 原保密 IP（全站公开后仅作历史拆分保留）。name → 显示名（hover tag / 详情页）。
 const PRIVATE_IPS = { keaitianqi: '可爱天气' };
 
 const IMG_RE = /\.(png|jpg|jpeg|webp)$/i;

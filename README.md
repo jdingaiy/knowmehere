@@ -22,7 +22,6 @@ python -m http.server 8123
 ```bash
 npm run optimize     # 上传新图后跑：assets/projects、assets/stickers 下 PNG/JPG 原地转 WebP 并压缩
 npm run manifest     # IP 贴纸有增删后跑：重新生成 assets/ip-manifest*.json
-npm test             # middleware 密码门逻辑自检
 ```
 
 素材上传规范见 [ASSETS.md](ASSETS.md)。
@@ -32,4 +31,3 @@ npm test             # middleware 密码门逻辑自检
 - 原生 HTML / CSS / 模块化 JS，零构建
 - Three.js (r160) 本地打包（js/three.module.js）
 - 贴纸是 WebGL 上的细分曲面网格，沿圆柱体表面弯折
-- Vercel Edge Middleware（middleware.js）：全站密码门 + 保密项目按密码放行

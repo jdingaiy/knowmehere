@@ -51,7 +51,7 @@ for (const job of JOBS) {
   }
 }
 
-// 森林全景背景：原地重压缩（文件名被 middleware / 登录页引用，保持不变）
+// 森林全景背景：原地重压缩（文件名被多处引用，保持不变）
 const pano = 'assets/texture/forest_pan.jpg';
 if (fs.existsSync(pano)) {
   const before = fs.statSync(pano).size;
