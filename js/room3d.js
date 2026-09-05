@@ -13,6 +13,9 @@
  */
 import * as THREE from './three.module.js';
 
+const gsap = window.gsap;
+const reducedMotion = () => window.__motionReduced?.() ?? false;
+
 const CFG = {
   poleRadius: 4.2,
   poleHeight: 44,        // tall — extends well past the viewport top/bottom
@@ -38,42 +41,40 @@ let cameraAngle = 0;   // camera orbit angle around the Y axis (radians)
 // Picks the shorter rotation direction. Returns a promise.
 let _rotAnim = null;
 function tweenCameraAngle(target, ms) {
-  if (_rotAnim) cancelAnimationFrame(_rotAnim.raf);
+  if (_rotAnim) _rotAnim.kill();
   const start = cameraAngle;
   let delta = target - start;
   while (delta >  Math.PI) delta -= 2 * Math.PI;
   while (delta < -Math.PI) delta += 2 * Math.PI;
-  const t0 = performance.now();
-  return new Promise((resolve) => {
-    function step(now) {
-      const k = Math.min(1, (now - t0) / ms);
-      const ease = 1 - Math.pow(1 - k, 3);
-      cameraAngle = start + delta * ease;
-      if (k < 1) _rotAnim = { raf: requestAnimationFrame(step) };
-      else { _rotAnim = null; resolve(); }
-    }
-    _rotAnim = { raf: requestAnimationFrame(step) };
+  const state = { value: start };
+  _rotAnim = gsap.to(state, {
+    value: start + delta,
+    duration: reducedMotion() ? 0 : ms / 1000,
+    ease: 'power3.out',
+    overwrite: 'auto',
+    onUpdate: () => { cameraAngle = state.value; },
+    onComplete: () => { _rotAnim = null; },
   });
+  return _rotAnim;
 }
 
 // Vertical pan tween — bring a sticker's y to the centre of the viewport.
 let _yAnim = null;
 function tweenViewY(target, ms) {
-  if (_yAnim) cancelAnimationFrame(_yAnim.raf);
+  if (_yAnim) _yAnim.kill();
   const start = viewY;
   const lo = -CFG.viewYRange, hi = CFG.viewYRange;
   const goal = Math.max(lo, Math.min(hi, target));
-  const t0 = performance.now();
-  return new Promise((resolve) => {
-    function step(now) {
-      const k = Math.min(1, (now - t0) / ms);
-      const ease = 1 - Math.pow(1 - k, 3);
-      viewY = start + (goal - start) * ease;
-      if (k < 1) _yAnim = { raf: requestAnimationFrame(step) };
-      else { _yAnim = null; resolve(); }
-    }
-    _yAnim = { raf: requestAnimationFrame(step) };
+  const state = { value: start };
+  _yAnim = gsap.to(state, {
+    value: goal,
+    duration: reducedMotion() ? 0 : ms / 1000,
+    ease: 'power3.out',
+    overwrite: 'auto',
+    onUpdate: () => { viewY = state.value; },
+    onComplete: () => { _yAnim = null; },
   });
+  return _yAnim;
 }
 let stickers = [];
 let dragging = null, dragMoved = false, downPos = { x: 0, y: 0 };
@@ -1186,14 +1187,13 @@ function startReveal() {
     tweenCameraAngle(_revealPose.angle, 1800);
     tweenViewY(clamp(_revealPose.y, -safe, safe), 1800);
   }
-  // 树影光斑像阳光一样渐亮
+  // 树影光斑像阳光一样渐亮；GSAP 统一 easing 与中断覆盖。
   const t0 = performance.now();
   const FROM = 0.2, TO = 1.7;
-  (function ramp(now) {
-    const k = Math.min(1, (now - t0) / 1400);
-    poleMat.userData.goboIntensity.value = FROM + (TO - FROM) * (1 - Math.pow(1 - k, 3));
-    if (k < 1) requestAnimationFrame(ramp);
-  })(t0);
+  gsap.fromTo(poleMat.userData.goboIntensity,
+    { value: FROM },
+    { value: TO, duration: reducedMotion() ? 0 : 1.4,
+      ease: 'power3.out', overwrite: 'auto' });
   // 贴纸错峰弹出
   stickers.forEach((s, i) => {
     if (s.appear >= 1) return;
