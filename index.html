@@ -253,9 +253,22 @@
   <script src="js/stickers-data.js"></script>
   <!-- 附加项目数据（原 NDA 项目，已全站公开） -->
   <script src="js/stickers-private.js"></script>
+  <!-- Pinned GSAP build: one engine for UI choreography and WebGL state tweens. -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
 
   <!-- modal + UI logic (non-module) -->
   <script>
+    const gsap = window.gsap;
+    const motionPreference = {
+      reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    };
+    const motionMedia = gsap.matchMedia();
+    motionMedia.add('(prefers-reduced-motion: reduce)', () => {
+      motionPreference.reduce = true;
+      return () => { motionPreference.reduce = false; };
+    });
+    const reduceMotion = () => motionPreference.reduce;
+    window.__motionReduced = reduceMotion;
     const overlay   = document.getElementById('modal-overlay');
     const filterBtn = document.getElementById('filter-btn');
     const filterDD  = document.getElementById('filter-dropdown');
@@ -359,15 +372,29 @@
       if (window.__room) window.__room.pause();
       initCarousel();
       if (isIp) enableIpDrag();
+      gsap.killTweensOf([overlay, '.modal-box', '.modal-close-btn']);
+      const duration = reduceMotion() ? 0 : 0.46;
+      gsap.timeline({ defaults: { overwrite: 'auto' } })
+        .fromTo(overlay, { autoAlpha: 0 }, { autoAlpha: 1, duration: duration * 0.7, ease: 'power2.out' }, 0)
+        .fromTo('.modal-box', { y: reduceMotion() ? 0 : 24 }, { y: 0, duration, ease: 'power3.out' }, 0.04)
+        .fromTo('.modal-close-btn', { autoAlpha: 0, scale: reduceMotion() ? 1 : 0.88 },
+          { autoAlpha: 1, scale: 1, duration: duration * 0.7, ease: 'back.out(1.5)' }, 0.1);
     }
     function closeModal() {
-      overlay.classList.remove('open');
-      overlay.classList.remove('ip-mode');
-      document.body.classList.remove('modal-open');
-      document.body.classList.remove('ip-modal');
-      document.body.style.overflow = '';
-      if (window.__room && !track.classList.contains('show-cv')) window.__room.resume();
-      currentModal = null;
+      const finish = () => {
+        overlay.classList.remove('open', 'ip-mode');
+        document.body.classList.remove('modal-open', 'ip-modal');
+        document.body.style.overflow = '';
+        gsap.set([overlay, '.modal-box', '.modal-close-btn'], { clearProps: 'all' });
+        if (window.__room && !track.classList.contains('show-cv')) window.__room.resume();
+        currentModal = null;
+      };
+      gsap.killTweensOf([overlay, '.modal-box', '.modal-close-btn']);
+      if (reduceMotion()) return finish();
+      gsap.timeline({ onComplete: finish })
+        .to('.modal-close-btn', { autoAlpha: 0, scale: 0.9, duration: 0.16, ease: 'power2.in' }, 0)
+        .to('.modal-box', { y: 16, autoAlpha: 0, duration: 0.24, ease: 'power2.in' }, 0)
+        .to(overlay, { autoAlpha: 0, duration: 0.26, ease: 'power2.in' }, 0.05);
     }
 
     // Hero stickers on the IP detail page are draggable, clamped within the
@@ -478,15 +505,15 @@
         filterDD.classList.remove('open');
         filterBtn.classList.remove('open');
       }
-      // Pause/resume the 3D loop so it doesn't keep rendering off-screen.
-      // Pause AFTER the slide finishes so the canvas keeps animating during
-      // the transition; resume immediately when sliding back.
       clearTimeout(pauseTimer);
-      if (cv) {
-        pauseTimer = setTimeout(() => { window.__room && window.__room.pause(); }, 700);
-      } else {
-        window.__room && window.__room.resume();
-      }
+      if (!cv) window.__room && window.__room.resume();
+      gsap.to(track, {
+        xPercent: cv ? -50 : 0,
+        duration: reduceMotion() ? 0 : 0.72,
+        ease: 'power3.inOut',
+        overwrite: 'auto',
+        onComplete: () => { if (cv) window.__room && window.__room.pause(); },
+      });
     }
     document.querySelectorAll('[data-panel]').forEach(el => {
       el.addEventListener('click', (e) => {
@@ -551,6 +578,10 @@
     const HI_TXT = "Hi, I'm Tan Jiaqi.";
     ldHi.innerHTML = [...HI_TXT].map((c, i) =>
       `<span style="--i:${i}">${c === ' ' ? '&nbsp;' : c}</span>`).join('');
+    gsap.fromTo(ldHi.children,
+      { autoAlpha: 0, y: reduceMotion() ? 0 : 8 },
+      { autoAlpha: 1, y: 0, duration: reduceMotion() ? 0 : 0.42,
+        stagger: reduceMotion() ? 0 : 0.033, ease: 'power2.out' });
 
     ldVideo.playbackRate = 2.5;        // 2.48s 的视频 ~1s 播完
     let assetsReady = false, introDone = false, loaderGone = false;
@@ -559,7 +590,10 @@
       loaderGone = true;
       playReveal();                    // 场景揭幕（相机环绕/贴纸贴上/光斑渐亮）与白雾同步
       loaderEl.classList.add('done');
-      setTimeout(() => loaderEl.remove(), 1900);
+      gsap.timeline({ onComplete: () => loaderEl.remove() })
+        .to('.ld-center', { autoAlpha: 0, duration: reduceMotion() ? 0 : 0.28, ease: 'power1.out' })
+        .to(loaderEl, { autoAlpha: 0, scale: reduceMotion() ? 1 : 1.06,
+          duration: reduceMotion() ? 0 : 0.82, ease: 'power2.inOut' }, '<0.08');
     }
     function finishIntro() {
       if (introDone) return;
