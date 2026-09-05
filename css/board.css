@@ -66,9 +66,8 @@
   width: 200vw; height: 100vh;
   display: flex;
   transform: translateX(0);
-  transition: transform 0.65s cubic-bezier(0.65, 0.05, 0.36, 1);
+  will-change: transform;
 }
-.app-track.show-cv { transform: translateX(-100vw); }
 
 .app-panel {
   width: 100vw; height: 100vh;
@@ -94,7 +93,6 @@
   will-change: opacity, transform;
   /* 只动 opacity + transform（合成层完成，不触发逐帧重绘）。
      不做 blur：白底上模糊不可见，却是退出卡顿的主因。 */
-  transition: opacity 1s ease, transform 1s ease;
 }
 #loader.done {
   opacity: 0;
@@ -106,7 +104,6 @@
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   gap: 48px;
-  transition: opacity 0.35s ease;
 }
 #loader.done .ld-center { opacity: 0; }  /* logo + 文字先消失 */
 
@@ -128,9 +125,8 @@
   display: inline-block;
   opacity: 0;
   transform: translateY(8px);
-  animation: ld-char 0.4s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-  animation-delay: calc(var(--i) * 33ms);
 }
-@keyframes ld-char {
-  to { opacity: 1; transform: translateY(0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .drag-hint { animation: none; }
 }
