@@ -78,9 +78,13 @@ function tweenViewY(target, ms) {
 }
 let stickers = [];
 let dragging = null, dragMoved = false, downPos = { x: 0, y: 0 };
-let snapping = false;   // true during the per-pick snap animation; disables drag tracking
 let topOrder = 100;
 let isPaused = false;
+// Desktop hover intent: wait briefly before centring a sticker so casually
+// crossing the pole does not make the camera chase every item.
+const HOVER_FOCUS_DELAY = 220;
+let hoverFocusTimer = null;
+let hoverFocusTarget = null;
 // One-shot hint: until the visitor has clicked any sticker, periodically
 // wiggle a random visible one to suggest they're interactive. The flag is
 // persisted so the hint never replays for returning visitors.
@@ -932,7 +936,10 @@ function bindEvents() {
   el.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
   window.addEventListener('resize', onResize);
-  el.addEventListener('pointerleave', hideTag);
+  el.addEventListener('pointerleave', () => {
+    hideTag();
+    cancelHoverFocus();
+  });
   // mouse wheel / trackpad vertical scroll -> pan view up/down
   el.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -983,6 +990,7 @@ function onDown(e) {
   downPos = { x: e.clientX, y: e.clientY };
   try { renderer.domElement.setPointerCapture(e.pointerId); } catch (err) {}
   if (picked) {
+    cancelHoverFocus();
     dragging = picked;
     dragging.mesh.renderOrder = ++topOrder;
     const targetAngle = picked.theta;
@@ -993,15 +1001,6 @@ function onDown(e) {
     dragging.lift = DRAG_LIFT;
     rebuild(dragging);
     dragMoved = false;
-    snapping = true;
-    // Snap horizontally to centre the sticker. Snap vertically only when the
-    // sticker's y is within the current safe viewport range — otherwise the
-    // pole's top/bottom would enter frame and baseCam() would have to clamp
-    // viewY anyway, producing a visible bounce-back.
-    const safe = safeViewYRange();
-    const tweens = [tweenCameraAngle(targetAngle, 380)];
-    if (Math.abs(picked.y) <= safe) tweens.push(tweenViewY(picked.y, 380));
-    Promise.all(tweens).then(() => { snapping = false; });
     return;
   }
   // empty space (or click landed on the pole / back-side sticker) -> spin & pan
@@ -1023,7 +1022,6 @@ function onMove(e) {
     return;
   }
   if (!dragging) return;
-  if (snapping) return;                       // wait until the snap finishes
   if (Math.abs(e.clientX - downPos.x) > 4 || Math.abs(e.clientY - downPos.y) > 4)
     dragMoved = true;
   // Sticker drag:
@@ -1095,7 +1093,6 @@ function onUp(e) {
   dragging.mesh.visible = true;
   dragging.lift = REST_LIFT;
   rebuild(dragging);
-  snapping = false;
   dragging = null;
 }
 
@@ -1104,15 +1101,35 @@ function onUp(e) {
 
 function updateHoverTag(e) {
   if (!tagEl) return;
-  if (dragging || rotating) { hideTag(); return; }
+  if (dragging || rotating) { hideTag(); cancelHoverFocus(); return; }
   setPointer(e);
   raycaster.setFromCamera(pointer, camera);
   const picked = pickStickerByAlpha();
   if (picked) {
     showTag(picked.data.name, e.clientX, e.clientY);
+    scheduleHoverFocus(picked, e);
   } else {
     hideTag();
+    cancelHoverFocus();
   }
+}
+function scheduleHoverFocus(entry, event) {
+  if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+  if (hoverFocusTarget === entry) return;
+  cancelHoverFocus();
+  hoverFocusTarget = entry;
+  hoverFocusTimer = setTimeout(() => {
+    hoverFocusTimer = null;
+    if (dragging || rotating || hoverFocusTarget !== entry) return;
+    const safe = safeViewYRange();
+    tweenCameraAngle(entry.theta, 480);
+    if (Math.abs(entry.y) <= safe) tweenViewY(entry.y, 480);
+  }, HOVER_FOCUS_DELAY);
+}
+function cancelHoverFocus() {
+  clearTimeout(hoverFocusTimer);
+  hoverFocusTimer = null;
+  hoverFocusTarget = null;
 }
 function showTag(text, x, y) {
   tagEl.textContent = text;
