@@ -92,8 +92,10 @@ let focusedPointer = null;
 // persisted so the hint never replays for returning visitors.
 const HINT_KEY = 'sk_hint_done_v1';
 let hintTimer = null, hintActive = null, hintStart = 0;
-const DRAG_LIFT = 0.55;    // how high a dragged sticker pops up off the cylinder
+const DRAG_LIFT = 0.22;    // detached height after a deliberate peel
 const REST_LIFT = 0.005;   // resting lift just off the surface
+const PEEL_START = 0.14;   // small edge curl on pointer-down
+const PEEL_DISTANCE = 118; // pointer pixels needed for a full peel
 let container, modalApi, tagEl;
 
 /* ---------- loading manager + reveal (intro animation) state ---------- */
@@ -301,6 +303,11 @@ const stickerFrag = `
     c.rgb += (currentIntensity - 1.0) * lightIntensity * (1.0 - c.rgb) * sunColor * goboMask;
 
     c.a *= smoothstep(0.0, 0.35, appear);
+    // Curled triangles reveal a warm, subtly fibrous paper back.
+    if (!gl_FrontFacing) {
+      float fibre = 0.018 * sin(vUv.x * 210.0 + vUv.y * 97.0);
+      c.rgb = vec3(0.91 + fibre, 0.895 + fibre, 0.86 + fibre);
+    }
     gl_FragColor = c;
   }
 `;
@@ -491,7 +498,7 @@ function getPoleSurface(theta, y, out, lift) {
 
 /* ---- build a curved sticker geometry (subdivided, follows cylinder) ---- */
 const _surf = { pos: new THREE.Vector3(), normal: new THREE.Vector3() };
-function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn) {
+function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn, peelEntry) {
   const N = 28;
   const ar = (typeof aspect === 'number' && aspect > 0) ? aspect : 1;
   // Geometry is grown by `m` on each side; UVs are remapped so the texture's
@@ -510,6 +517,37 @@ function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn) {
       const theta = thetaC + (fx - 0.5) * 2 * arcHalf;
       const y     = yC     + (0.5 - fy) * sh;
       getPoleSurface(theta, y, _surf, lift);
+      // Sticker-Forge-inspired edge peel, adapted to the shared cylindrical
+      // mesh. Only the strip nearest the grabbed edge bends; the remainder
+      // stays rigidly attached to the pole.
+      const peel = peelEntry ? clamp(peelEntry.peel || 0, 0, 1) : 0;
+      if (peel > 0.001 && peelEntry.peelEdge) {
+        const edge = peelEntry.peelEdge;
+        const horizontal = edge === 'left' || edge === 'right';
+        const span = horizontal ? sw : sh;
+        const d = edge === 'left' ? fx * sw
+          : edge === 'right' ? (1 - fx) * sw
+          : edge === 'top' ? fy * sh
+          : (1 - fy) * sh;
+        const extent = span * (0.055 + 0.40 * peel);
+        if (d < extent) {
+          const qPeel = extent - d;
+          const maxAngle = 0.16 + peel * 2.22;
+          const aPeel = (qPeel / extent) * maxAngle;
+          const radius = extent / maxAngle;
+          const tangentShift = qPeel - radius * Math.sin(aPeel);
+          const normalLift = radius * (1 - Math.cos(aPeel));
+          if (horizontal) {
+            const sign = edge === 'left' ? 1 : -1;
+            _surf.pos.x += Math.cos(theta) * tangentShift * sign + _surf.normal.x * normalLift;
+            _surf.pos.z += -Math.sin(theta) * tangentShift * sign + _surf.normal.z * normalLift;
+          } else {
+            _surf.pos.y += tangentShift * (edge === 'top' ? -1 : 1);
+            _surf.pos.x += _surf.normal.x * normalLift;
+            _surf.pos.z += _surf.normal.z * normalLift;
+          }
+        }
+      }
       pos[p++] = _surf.pos.x; pos[p++] = _surf.pos.y; pos[p++] = _surf.pos.z;
       const u = fx       * (1 + 2 * m) - m;
       const v = (1 - fy) * (1 + 2 * m) - m;
@@ -713,7 +751,7 @@ export function addStickers(list) {
     const mesh = new THREE.Mesh(buildStickerGeometry(theta, y, S), mat);
     mesh.renderOrder = 2 + i;
     world.add(mesh);
-    stickers.push({ mesh, shMesh, data: d, theta, y, S, lift: 0.005, aspect: 1, appear: revealed ? 1 : 0 });
+    stickers.push({ mesh, shMesh, data: d, theta, y, S, lift: REST_LIFT, peel: 0, peelEdge: null, aspect: 1, appear: revealed ? 1 : 0 });
   });
   // Aim the camera at whichever side of the pole has the most stickers, so
   // the first paint never lands on an empty back. During the intro the camera
@@ -862,7 +900,7 @@ function rebuild(entry) {
   entry.y = clamp(entry.y, -CFG.poleHeight/2 + 1, CFG.poleHeight/2 - 1);
   // sticker (margin a little wider so outline can spill past the artwork)
   const g = buildStickerGeometry(
-    entry.theta, entry.y, entry.S, entry.lift, entry.aspect, 0.08
+    entry.theta, entry.y, entry.S, entry.lift, entry.aspect, 0.08, entry
   );
   entry.mesh.geometry.dispose();
   entry.mesh.geometry = g;
@@ -929,6 +967,77 @@ function syncFlatToView() {
     dragging.flat.position.y = viewY;
   }
 }
+
+/* ---------- lightweight velocity-reactive peel audio ----------
+ * Inspired by Sticker Forge's interaction model, but synthesized locally:
+ * no copied samples, no extra download, and silence while the pointer rests.
+ */
+let peelAudioCtx = null;
+let peelNoise = null;
+let peelAudioState = null;
+function ensurePeelAudio() {
+  if (peelAudioCtx) {
+    if (peelAudioCtx.state === 'suspended') peelAudioCtx.resume();
+    return peelAudioCtx;
+  }
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return null;
+  peelAudioCtx = new AudioContext();
+  const length = Math.floor(peelAudioCtx.sampleRate * 0.16);
+  peelNoise = peelAudioCtx.createBuffer(1, length, peelAudioCtx.sampleRate);
+  const data = peelNoise.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < length; i++) {
+    const white = Math.random() * 2 - 1;
+    last = last * 0.72 + white * 0.28;
+    data[i] = last;
+  }
+  return peelAudioCtx;
+}
+function startPeelAudio(e) {
+  ensurePeelAudio();
+  peelAudioState = { x: e.clientX, y: e.clientY, at: performance.now(), grainAt: 0, peak: 0 };
+}
+function emitPeelGrain(speed, progress, release) {
+  const ctx = ensurePeelAudio();
+  if (!ctx || !peelNoise) return;
+  const now = ctx.currentTime;
+  const src = ctx.createBufferSource();
+  const filter = ctx.createBiquadFilter();
+  const gain = ctx.createGain();
+  src.buffer = peelNoise;
+  src.playbackRate.value = release ? 0.64 : 0.78 + Math.random() * 0.5 + speed * 0.002;
+  filter.type = 'bandpass';
+  filter.frequency.value = release ? 620 : 900 + progress * 1500 + speed * 3;
+  filter.Q.value = release ? 0.7 : 0.45 + progress * 0.7;
+  const level = release ? 0.018 : Math.min(0.032, 0.006 + speed * 0.00012);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(level, now + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + (release ? 0.10 : 0.045));
+  src.connect(filter).connect(gain).connect(ctx.destination);
+  src.start(now, Math.random() * 0.04, release ? 0.12 : 0.055);
+  src.stop(now + 0.14);
+}
+function playPeelAudio(e, progress) {
+  if (!peelAudioState) return;
+  const now = performance.now();
+  const dt = Math.max(8, now - peelAudioState.at);
+  const speed = Math.hypot(e.clientX - peelAudioState.x, e.clientY - peelAudioState.y) / dt * 1000;
+  peelAudioState.peak = Math.max(peelAudioState.peak, speed);
+  const interval = clamp(92 - speed * 0.16, 24, 90);
+  if (speed > 28 && now - peelAudioState.grainAt > interval) {
+    emitPeelGrain(speed, progress, false);
+    peelAudioState.grainAt = now;
+  }
+  peelAudioState.x = e.clientX;
+  peelAudioState.y = e.clientY;
+  peelAudioState.at = now;
+}
+function finishPeelAudio(detached) {
+  if (detached && peelAudioState) emitPeelGrain(peelAudioState.peak, 1, true);
+  peelAudioState = null;
+}
+
 /* ============ INTERACTION ============ */
 let lastTapAt = 0;     // for double-tap detection on empty space
 let rotateMoved = false;
@@ -978,7 +1087,10 @@ function pickStickerByAlpha() {
     if (pHit && h.distance > pHit.distance) break; // behind the pole — done
     const entry = stickers.find(s => s.mesh === h.object);
     if (!entry || !h.uv) continue;
-    if (alphaAt(entry, h.uv) > 0.05) return entry;
+    if (alphaAt(entry, h.uv) > 0.05) {
+      entry._pickUv = h.uv.clone();
+      return entry;
+    }
   }
   return null;
 }
@@ -999,15 +1111,26 @@ function onDown(e) {
     dragging._touch = (e.pointerType === 'touch');
     dragging._targetTheta = picked.theta;
     dragging._targetY = picked.y;
+    dragging._targetPeel = PEEL_START;
+    const uv = picked._pickUv || { x: 0.5, y: 0.5 };
+    const edgeDistances = [
+      ['left', uv.x], ['right', 1 - uv.x],
+      ['bottom', uv.y], ['top', 1 - uv.y]
+    ];
+    edgeDistances.sort((a, b) => a[1] - b[1]);
+    dragging.peelEdge = edgeDistances[0][0];
+    startPeelAudio(e);
     const surfaceHit = raycaster.intersectObject(pole, false)[0];
     const hitTheta = surfaceHit ? Math.atan2(surfaceHit.point.x, surfaceHit.point.z) : picked.theta;
     dragging._grabThetaOffset = shortestAngleDelta(picked.theta, hitTheta);
     dragging._grabYOffset = surfaceHit ? picked.y - surfaceHit.point.y : 0;
-    gsap.killTweensOf(dragging, 'lift');
+    gsap.killTweensOf(dragging, 'lift,peel');
     gsap.to(dragging, {
-      lift: DRAG_LIFT,
-      duration: reducedMotion() ? 0 : 0.14,
+      lift: 0.018,
+      peel: PEEL_START,
+      duration: reducedMotion() ? 0 : 0.13,
       ease: 'power2.out',
+      overwrite: 'auto',
       onUpdate: () => rebuild(dragging),
     });
     dragMoved = false;
@@ -1032,8 +1155,10 @@ function onMove(e) {
     return;
   }
   if (!dragging) return;
-  if (Math.abs(e.clientX - downPos.x) > 6 || Math.abs(e.clientY - downPos.y) > 6)
-    dragMoved = true;
+  const pointerTravel = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
+  if (pointerTravel > 6) dragMoved = true;
+  dragging._targetPeel = clamp(PEEL_START + pointerTravel / PEEL_DISTANCE, PEEL_START, 1);
+  playPeelAudio(e, dragging._targetPeel);
   // Keep the camera still and map the pointer directly onto the pole. The
   // original pickup offset prevents the sticker jumping under the cursor.
   setPointer(e);
@@ -1093,12 +1218,15 @@ function onUp(e) {
   // hide the flat preview, restore the curved sticker on the cylinder
   if (released.shMesh) released.shMesh.visible = true;
   released.mesh.visible = true;
-  gsap.killTweensOf(released, 'lift');
+  finishPeelAudio(dragMoved);
+  gsap.killTweensOf(released, 'lift,peel');
   gsap.to(released, {
     lift: REST_LIFT,
+    peel: 0,
     duration: reducedMotion() ? 0 : 0.24,
     ease: 'back.out(1.35)',
     onUpdate: () => rebuild(released),
+    onComplete: () => { released.peelEdge = null; },
   });
   dragging = null;
 }
@@ -1231,9 +1359,16 @@ function stepDragFollow() {
   const follow = dragging._touch ? 0.34 : 0.24;
   const dTheta = shortestAngleDelta(dragging._targetTheta, dragging.theta);
   const dY = dragging._targetY - dragging.y;
-  if (Math.abs(dTheta) < 0.0002 && Math.abs(dY) < 0.002) return;
+  const peelGoal = dragging._targetPeel == null ? dragging.peel : dragging._targetPeel;
+  const dPeel = peelGoal - dragging.peel;
+  const targetLift = 0.018 + Math.max(0, peelGoal - PEEL_START) * DRAG_LIFT;
+  const dLift = targetLift - dragging.lift;
+  if (Math.abs(dTheta) < 0.0002 && Math.abs(dY) < 0.002
+      && Math.abs(dPeel) < 0.002 && Math.abs(dLift) < 0.001) return;
   dragging.theta += dTheta * follow;
   dragging.y += dY * follow;
+  dragging.peel += dPeel * (dragging._touch ? 0.30 : 0.23);
+  dragging.lift += dLift * 0.20;
   rebuild(dragging);
 }
 /* ============ INTRO REVEAL（森林揭幕） ============ */
