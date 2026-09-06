@@ -557,7 +557,11 @@ function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn, peelEntry) 
         const extent = span * (0.055 + 0.40 * peel);
         if (d < extent) {
           const qPeel = extent - d;
-          const maxAngle = 0.16 + peel * 2.22;
+          // Keep the fold below 90 degrees. Beyond that point the sampled
+          // columns reverse direction and overlap like venetian blinds,
+          // which is the source of the visible vertical strip artifact.
+          // Full removal is represented by the dedicated flat mesh instead.
+          const maxAngle = 0.12 + peel * 1.18;
           const aPeel = (qPeel / extent) * maxAngle;
           const radius = extent / maxAngle;
           const tangentShift = qPeel - radius * Math.sin(aPeel);
