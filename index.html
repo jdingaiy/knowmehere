@@ -253,8 +253,8 @@
   <script src="js/stickers-data.js"></script>
   <!-- 附加项目数据（原 NDA 项目，已全站公开） -->
   <script src="js/stickers-private.js"></script>
-  <!-- Pinned GSAP build: one engine for UI choreography and WebGL state tweens. -->
-  <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+  <!-- Keep GSAP local: the loader must not depend on a third-party CDN. -->
+  <script src="js/gsap.min.js"></script>
 
   <!-- modal + UI logic (non-module) -->
   <script>
