@@ -1104,6 +1104,16 @@ function bindEvents() {
   el.addEventListener('pointerdown', onDown);
   el.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
+  el.addEventListener('pointercancel', (e) => onUp(e, true));
+  el.addEventListener('lostpointercapture', (e) => {
+    if (dragging || rotating) onUp(e, true);
+  });
+  window.addEventListener('blur', () => {
+    if (dragging || rotating) onUp({}, true);
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && (dragging || rotating)) onUp({}, true);
+  });
   window.addEventListener('resize', onResize);
   el.addEventListener('pointerleave', () => {
     hideTag();
@@ -1153,6 +1163,9 @@ function pickStickerByAlpha() {
   return null;
 }
 function onDown(e) {
+  // Recover defensively if the browser swallowed the previous gesture's
+  // ending event. A new gesture must never inherit a curled sticker state.
+  if (dragging || rotating) onUp(e, true);
   // Any pointer activity dismisses the wiggle hint for this session; if the
   // visitor actually opens a sticker we'll persist it (see onUp).
   stopHint();
@@ -1184,13 +1197,16 @@ function onDown(e) {
     dragging._grabThetaOffset = shortestAngleDelta(picked.theta, hitTheta);
     dragging._grabYOffset = surfaceHit ? picked.y - surfaceHit.point.y : 0;
     gsap.killTweensOf(dragging, 'lift,peel');
-    gsap.to(dragging, {
+    const pressed = dragging;
+    gsap.to(pressed, {
       lift: 0.018,
       peel: PEEL_START,
       duration: reducedMotion() ? 0 : 0.13,
       ease: 'power2.out',
       overwrite: 'auto',
-      onUpdate: () => rebuild(dragging),
+      // Capture this entry. Referencing the mutable global `dragging` here
+      // can rebuild the wrong sticker after a cancelled gesture.
+      onUpdate: () => rebuild(pressed),
     });
     dragMoved = false;
     return;
@@ -1200,6 +1216,11 @@ function onDown(e) {
   rotating = { startX: e.clientX, startY: e.clientY, baseRot: cameraAngle, baseY: viewY, touch: (e.pointerType === 'touch') };
 }
 function onMove(e) {
+  // Mouse buttons reaching zero without pointerup means capture was lost.
+  if ((dragging || rotating) && e.pointerType === 'mouse' && e.buttons === 0) {
+    onUp(e, true);
+    return;
+  }
   updateHoverTag(e);
   if (rotating) {
     const dx = e.clientX - rotating.startX;
@@ -1235,10 +1256,13 @@ function onMove(e) {
     );
   }
 }
-function onUp(e) {
-  try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (err) {}
+let finishingPointer = false;
+function onUp(e = {}, cancelled = false) {
+  if (finishingPointer) return;
+  finishingPointer = true;
+  try {
   if (rotating) {
-    const wasTap = !rotateMoved;
+    const wasTap = !cancelled && !rotateMoved;
     rotating = null;
     // Double-tap on empty space -> spin and pan to the densest sticker cluster.
     if (wasTap) {
@@ -1269,7 +1293,7 @@ function onUp(e) {
     if (!released.detached) rebuild(released);
     savePos(released.data.id, released.theta, released.y);
   }
-  else if (modalApi && modalApi.open) {
+  else if (!cancelled && modalApi && modalApi.open) {
     // First sticker tap — dismiss the click-hint loop permanently.
     try { localStorage.setItem(HINT_KEY, '1'); } catch (_) {}
     stopHint();
@@ -1324,6 +1348,14 @@ function onUp(e) {
     });
   }
   dragging = null;
+  } finally {
+    // Clearing state happens before releasing capture so a synchronous
+    // lostpointercapture event cannot run the cleanup twice.
+    try {
+      if (e.pointerId != null) renderer.domElement.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+    finishingPointer = false;
+  }
 }
 
 
