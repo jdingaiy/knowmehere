@@ -94,7 +94,7 @@ let focusedPointer = null;
 const HINT_KEY = 'sk_hint_done_v1';
 let hintTimer = null, hintActive = null, hintStart = 0;
 const DRAG_LIFT = 0.22;    // detached height after a deliberate peel
-const REST_LIFT = 0.005;   // resting lift just off the surface
+const REST_LIFT = 0.025;   // depth-safe resting gap above the pole surface
 const PEEL_START = 0.14;   // small edge curl on pointer-down
 const PEEL_DISTANCE = 118; // pointer pixels needed for a full peel
 const PEEL_DETACH = 0.78;  // curl becomes a free, flat sticker after this point
@@ -514,7 +514,7 @@ function buildPole() {
  * samples your model's silhouette/UV.
  */
 function getPoleSurface(theta, y, out, lift) {
-  const r = CFG.poleRadius + (lift != null ? lift : 0.005);
+  const r = CFG.poleRadius + (lift != null ? lift : REST_LIFT);
   const nx = Math.sin(theta), nz = Math.cos(theta);
   out.pos.set(r * nx, y, r * nz);
   out.normal.set(nx, 0, nz);
@@ -937,17 +937,20 @@ function defaultLayout(d, i) {
 
 function rebuild(entry) {
   entry.y = clamp(entry.y, -CFG.poleHeight/2 + 1, CFG.poleHeight/2 - 1);
+  // Hard depth boundary: no easing or stale state may place the artwork
+  // inside the pole. This prevents z-fighting/occlusion stripes at contact.
+  const safeLift = Math.max(REST_LIFT, entry.lift);
   // sticker (margin a little wider so outline can spill past the artwork)
   const g = buildStickerGeometry(
-    entry.theta, entry.y, entry.S, entry.lift, entry.aspect, 0.08, entry
+    entry.theta, entry.y, entry.S, safeLift, entry.aspect, 0.08, entry
   );
   entry.mesh.geometry.dispose();
   entry.mesh.geometry = g;
   // shadow — almost-touching contact shadow that softens with blur, not by
   // moving away. As lift grows (drag), it drops slightly + softens further.
   if (entry.shMesh) {
-    const yOff  = -0.02 - entry.lift * 0.18;
-    const scale = 1.04 + entry.lift * 0.10;
+    const yOff  = -0.02 - safeLift * 0.18;
+    const scale = 1.04 + safeLift * 0.10;
     // wider margin on shadow so the blur tail can fade past the artwork
     const sg = buildStickerGeometry(
       entry.theta, entry.y + yOff, entry.S * scale, 0.001, entry.aspect, 0.18
@@ -955,8 +958,8 @@ function rebuild(entry) {
     entry.shMesh.geometry.dispose();
     entry.shMesh.geometry = sg;
     const u = entry.shMesh.material.uniforms;
-    u.strength.value = 0.35 - entry.lift * 0.18;
-    u.blurPx.value   = 10.0 + entry.lift * 14.0; // blurrier when lifted
+    u.strength.value = 0.35 - safeLift * 0.18;
+    u.blurPx.value   = 10.0 + safeLift * 14.0; // blurrier when lifted
   }
 }
 
@@ -1292,7 +1295,9 @@ function onUp(e) {
   gsap.to(released, {
     lift: REST_LIFT,
     duration: reducedMotion() ? 0 : 0.24,
-    ease: 'back.out(1.35)',
+    // Never overshoot radially into the pole. The tactile character comes
+    // from the lift timing and shadow compression, not a below-surface bounce.
+    ease: 'power3.out',
     onUpdate: () => rebuild(released),
     onComplete: () => { released.peelEdge = null; },
   });
