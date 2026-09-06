@@ -13,6 +13,10 @@
  */
 import * as THREE from './three.module.js';
 
+const gsap = window.gsap;
+const reducedMotion = () => window.__motionReduced?.() ?? false;
+const stickerTimeUniform = { value: 0 };
+
 const CFG = {
   poleRadius: 4.2,
   poleHeight: 44,        // tall — extends well past the viewport top/bottom
@@ -31,62 +35,79 @@ const CFG = {
 
 let scene, camera, renderer, raycaster, pointer;
 let pole, world, poleLightMap = null;
-let rotating = null;   // { startX, startY, baseRot, baseY } during a drag-the-pole gesture
+let rotating = null;   // pointer samples + velocity during a drag-the-pole gesture
 let viewY = 0;         // vertical pan offset (scroll / swipe)
 let cameraAngle = 0;   // camera orbit angle around the Y axis (radians)
+// Give the pole visual weight: a full-width mouse drag turns only 0.62 of a
+// revolution. Touch stays slightly more responsive, and release velocity is
+// projected into a short, capped glide instead of stopping abruptly.
+const ORBIT_TURNS_PER_VIEW = 0.62;
+const ORBIT_TOUCH_TURNS_PER_VIEW = 0.72;
+const PAN_GAIN_MOUSE = 0.018;
+const PAN_GAIN_TOUCH = 0.032;
+const INERTIA_LOOKAHEAD_MS = 260;
+const MAX_ORBIT_THROW = Math.PI * 0.42;
+const MAX_PAN_THROW = 1.45;
 // Animate cameraAngle (camera orbit around the pole) to a target value.
 // Picks the shorter rotation direction. Returns a promise.
 let _rotAnim = null;
 function tweenCameraAngle(target, ms) {
-  if (_rotAnim) cancelAnimationFrame(_rotAnim.raf);
+  if (_rotAnim) _rotAnim.kill();
   const start = cameraAngle;
   let delta = target - start;
   while (delta >  Math.PI) delta -= 2 * Math.PI;
   while (delta < -Math.PI) delta += 2 * Math.PI;
-  const t0 = performance.now();
-  return new Promise((resolve) => {
-    function step(now) {
-      const k = Math.min(1, (now - t0) / ms);
-      const ease = 1 - Math.pow(1 - k, 3);
-      cameraAngle = start + delta * ease;
-      if (k < 1) _rotAnim = { raf: requestAnimationFrame(step) };
-      else { _rotAnim = null; resolve(); }
-    }
-    _rotAnim = { raf: requestAnimationFrame(step) };
+  const state = { value: start };
+  _rotAnim = gsap.to(state, {
+    value: start + delta,
+    duration: reducedMotion() ? 0 : ms / 1000,
+    ease: 'power3.out',
+    overwrite: 'auto',
+    onUpdate: () => { cameraAngle = state.value; },
+    onComplete: () => { _rotAnim = null; },
   });
+  return _rotAnim;
 }
 
 // Vertical pan tween — bring a sticker's y to the centre of the viewport.
 let _yAnim = null;
 function tweenViewY(target, ms) {
-  if (_yAnim) cancelAnimationFrame(_yAnim.raf);
+  if (_yAnim) _yAnim.kill();
   const start = viewY;
   const lo = -CFG.viewYRange, hi = CFG.viewYRange;
   const goal = Math.max(lo, Math.min(hi, target));
-  const t0 = performance.now();
-  return new Promise((resolve) => {
-    function step(now) {
-      const k = Math.min(1, (now - t0) / ms);
-      const ease = 1 - Math.pow(1 - k, 3);
-      viewY = start + (goal - start) * ease;
-      if (k < 1) _yAnim = { raf: requestAnimationFrame(step) };
-      else { _yAnim = null; resolve(); }
-    }
-    _yAnim = { raf: requestAnimationFrame(step) };
+  const state = { value: start };
+  _yAnim = gsap.to(state, {
+    value: goal,
+    duration: reducedMotion() ? 0 : ms / 1000,
+    ease: 'power3.out',
+    overwrite: 'auto',
+    onUpdate: () => { viewY = state.value; },
+    onComplete: () => { _yAnim = null; },
   });
+  return _yAnim;
 }
 let stickers = [];
 let dragging = null, dragMoved = false, downPos = { x: 0, y: 0 };
-let snapping = false;   // true during the per-pick snap animation; disables drag tracking
 let topOrder = 100;
 let isPaused = false;
+// Desktop hover intent: wait briefly before centring a sticker so casually
+// crossing the pole does not make the camera chase every item.
+const HOVER_FOCUS_DELAY = 220;
+let hoverFocusTimer = null;
+let hoverFocusTarget = null;
+let focusedSticker = null;
+let focusedPointer = null;
 // One-shot hint: until the visitor has clicked any sticker, periodically
 // wiggle a random visible one to suggest they're interactive. The flag is
 // persisted so the hint never replays for returning visitors.
 const HINT_KEY = 'sk_hint_done_v1';
 let hintTimer = null, hintActive = null, hintStart = 0;
-const DRAG_LIFT = 0.55;    // how high a dragged sticker pops up off the cylinder
-const REST_LIFT = 0.005;   // resting lift just off the surface
+const DRAG_LIFT = 0.22;    // detached height after a deliberate peel
+const REST_LIFT = 0.025;   // depth-safe resting gap above the pole surface
+const PEEL_START = 0.20;   // clearly visible edge curl on pointer-down
+const PEEL_DISTANCE = 150; // longer tactile peel before flat drag takes over
+const PEEL_DETACH = 0.84;  // curl becomes a free, flat sticker after this point
 let container, modalApi, tagEl;
 
 /* ---------- loading manager + reveal (intro animation) state ---------- */
@@ -241,9 +262,11 @@ texLoader.load(POLE_LIGHT, (loaded) => {
 const stickerVert = `
   varying vec2 vUv;
   varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
   void main(){
     vUv = uv;
     vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -262,8 +285,10 @@ const stickerFrag = `
   uniform float lightMapIntensity;
   uniform float time;
   uniform float appear;
+  uniform float reflectStrength;
   varying vec2 vUv;
   varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
   void main(){
     // 入场 pop：UV 从贴纸中心向外展开，配合 alpha 淡入
     float sc = mix(0.55, 1.0, min(appear, 1.0));
@@ -294,6 +319,30 @@ const stickerFrag = `
     c.rgb += (currentIntensity - 1.0) * lightIntensity * (1.0 - c.rgb) * sunColor * goboMask;
 
     c.a *= smoothstep(0.0, 0.35, appear);
+    // Satin laminate reflection: a broad view-dependent band plus a small
+    // directional highlight. The artwork remains legible instead of being
+    // uniformly washed out, and the sheen travels as the camera/pole moves.
+    if (gl_FrontFacing) {
+      vec3 N = normalize(vWorldNormal);
+      vec3 V = normalize(cameraPosition - vWorldPos);
+      vec3 L = normalize(vec3(-0.35, 0.72, 0.60));
+      vec3 H = normalize(V + L);
+      float specular = pow(max(dot(N, H), 0.0), 28.0);
+      float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+      float viewShift = dot(V, normalize(vec3(0.74, 0.06, 0.67))) * 0.30;
+      float idleShift = time * 0.035;
+      float bandPos = fract(uv.x * 0.74 + uv.y * 0.26 + viewShift + idleShift);
+      float filmBand = exp(-pow((bandPos - 0.5) / 0.115, 2.0));
+      float fineGlint = exp(-pow((bandPos - 0.52) / 0.035, 2.0));
+      float sheen = clamp(specular * 0.90 + filmBand * 0.58 + fineGlint * 0.18 + fresnel * 0.22, 0.0, 0.92);
+      vec3 filmColor = mix(vec3(1.0, 0.975, 0.93), vec3(0.86, 0.94, 1.0), 0.42 + 0.18 * sin(time * 0.35));
+      c.rgb = mix(c.rgb, filmColor, sheen * reflectStrength);
+    }
+    // Curled triangles reveal a warm, subtly fibrous paper back.
+    if (!gl_FrontFacing) {
+      float fibre = 0.018 * sin(vUv.x * 210.0 + vUv.y * 97.0);
+      c.rgb = vec3(0.91 + fibre, 0.895 + fibre, 0.86 + fibre);
+    }
     gl_FragColor = c;
   }
 `;
@@ -475,7 +524,7 @@ function buildPole() {
  * samples your model's silhouette/UV.
  */
 function getPoleSurface(theta, y, out, lift) {
-  const r = CFG.poleRadius + (lift != null ? lift : 0.005);
+  const r = CFG.poleRadius + (lift != null ? lift : REST_LIFT);
   const nx = Math.sin(theta), nz = Math.cos(theta);
   out.pos.set(r * nx, y, r * nz);
   out.normal.set(nx, 0, nz);
@@ -484,7 +533,7 @@ function getPoleSurface(theta, y, out, lift) {
 
 /* ---- build a curved sticker geometry (subdivided, follows cylinder) ---- */
 const _surf = { pos: new THREE.Vector3(), normal: new THREE.Vector3() };
-function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn) {
+function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn, peelEntry) {
   const N = 28;
   const ar = (typeof aspect === 'number' && aspect > 0) ? aspect : 1;
   // Geometry is grown by `m` on each side; UVs are remapped so the texture's
@@ -503,6 +552,45 @@ function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn) {
       const theta = thetaC + (fx - 0.5) * 2 * arcHalf;
       const y     = yC     + (0.5 - fy) * sh;
       getPoleSurface(theta, y, _surf, lift);
+      // Sticker-Forge-inspired edge peel, adapted to the shared cylindrical
+      // mesh. Only the strip nearest the grabbed edge bends; the remainder
+      // stays rigidly attached to the pole.
+      const peel = peelEntry ? clamp(peelEntry.peel || 0, 0, 1) : 0;
+      if (peel > 0.001 && peelEntry.peelEdge) {
+        const edge = peelEntry.peelEdge;
+        const horizontal = edge === 'left' || edge === 'right';
+        const span = horizontal ? sw : sh;
+        const d = edge === 'left' ? fx * sw
+          : edge === 'right' ? (1 - fx) * sw
+          : edge === 'top' ? fy * sh
+          : (1 - fy) * sh;
+        const extent = span * (0.085 + 0.44 * peel);
+        if (d < extent) {
+          const qPeel = extent - d;
+          // Keep the fold below 90 degrees. Beyond that point the sampled
+          // columns reverse direction and overlap like venetian blinds,
+          // which is the source of the visible vertical strip artifact.
+          // Full removal is represented by the dedicated flat mesh instead.
+          const maxAngle = 0.12 + peel * 1.18;
+          const aPeel = (qPeel / extent) * maxAngle;
+          const radius = extent / maxAngle;
+          const tangentShift = qPeel - radius * Math.sin(aPeel);
+          // Emphasise height rather than rotation: the edge reads as peeled
+          // without ever approaching the self-intersection angle.
+          const edgeWeight = qPeel / extent;
+          const normalLift = radius * (1 - Math.cos(aPeel)) * 1.9
+            + edgeWeight * edgeWeight * peel * 0.09;
+          if (horizontal) {
+            const sign = edge === 'left' ? 1 : -1;
+            _surf.pos.x += Math.cos(theta) * tangentShift * sign + _surf.normal.x * normalLift;
+            _surf.pos.z += -Math.sin(theta) * tangentShift * sign + _surf.normal.z * normalLift;
+          } else {
+            _surf.pos.y += tangentShift * (edge === 'top' ? -1 : 1);
+            _surf.pos.x += _surf.normal.x * normalLift;
+            _surf.pos.z += _surf.normal.z * normalLift;
+          }
+        }
+      }
       pos[p++] = _surf.pos.x; pos[p++] = _surf.pos.y; pos[p++] = _surf.pos.z;
       const u = fx       * (1 + 2 * m) - m;
       const v = (1 - fy) * (1 + 2 * m) - m;
@@ -520,6 +608,7 @@ function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn) {
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   g.setIndex(idx);
+  g.computeVertexNormals();
   g.computeBoundingSphere();
   return g;
 }
@@ -653,6 +742,10 @@ export function addStickers(list) {
           entry._alphaCtx = rayCtx;
           
           rebuild(entry);
+          if (entry.flat) {
+            entry.flat.geometry.dispose();
+            entry.flat.geometry = buildFlatGeometry(entry.S, entry.aspect, 0.08);
+          }
         }
         renderOnce();
       },
@@ -674,8 +767,9 @@ export function addStickers(list) {
         lightMapRepeat: { value: new THREE.Vector2(1.0, 1.0) },
         lightMapOffset: { value: new THREE.Vector2(0, 0) },
         lightMapIntensity: { value: 1.45 },
-        time: { value: 0 },
-        appear: { value: revealed ? 1 : 0 }
+        time: stickerTimeUniform,
+        appear: { value: revealed ? 1 : 0 },
+        reflectStrength: { value: 0.72 }
       },
       vertexShader: stickerVert, fragmentShader: stickerFrag,
       transparent: true, depthWrite: false, depthTest: true,
@@ -706,7 +800,11 @@ export function addStickers(list) {
     const mesh = new THREE.Mesh(buildStickerGeometry(theta, y, S), mat);
     mesh.renderOrder = 2 + i;
     world.add(mesh);
-    stickers.push({ mesh, shMesh, data: d, theta, y, S, lift: 0.005, aspect: 1, appear: revealed ? 1 : 0 });
+    const flat = new THREE.Mesh(buildFlatGeometry(S, 1, 0.08), mat);
+    flat.visible = false;
+    flat.renderOrder = 1000;
+    world.add(flat);
+    stickers.push({ mesh, flat, shMesh, data: d, theta, y, S, lift: REST_LIFT, peel: 0, peelEdge: null, detached: false, aspect: 1, appear: revealed ? 1 : 0 });
   });
   // Aim the camera at whichever side of the pole has the most stickers, so
   // the first paint never lands on an empty back. During the intro the camera
@@ -853,17 +951,21 @@ function defaultLayout(d, i) {
 
 function rebuild(entry) {
   entry.y = clamp(entry.y, -CFG.poleHeight/2 + 1, CFG.poleHeight/2 - 1);
+  // Hard depth boundary: no easing or stale state may place the artwork
+  // inside the pole. This prevents z-fighting/occlusion stripes at contact.
+  const safeLift = Math.max(REST_LIFT, entry.lift);
   // sticker (margin a little wider so outline can spill past the artwork)
   const g = buildStickerGeometry(
-    entry.theta, entry.y, entry.S, entry.lift, entry.aspect, 0.08
+    entry.theta, entry.y, entry.S, safeLift, entry.aspect, 0.08, entry
   );
   entry.mesh.geometry.dispose();
   entry.mesh.geometry = g;
   // shadow — almost-touching contact shadow that softens with blur, not by
   // moving away. As lift grows (drag), it drops slightly + softens further.
   if (entry.shMesh) {
-    const yOff  = -0.02 - entry.lift * 0.18;
-    const scale = 1.04 + entry.lift * 0.10;
+    const peelAmount = clamp(entry.peel || 0, 0, 1);
+    const yOff  = -0.02 - safeLift * 0.18 - peelAmount * 0.035;
+    const scale = 1.04 + safeLift * 0.10 + peelAmount * 0.035;
     // wider margin on shadow so the blur tail can fade past the artwork
     const sg = buildStickerGeometry(
       entry.theta, entry.y + yOff, entry.S * scale, 0.001, entry.aspect, 0.18
@@ -871,14 +973,14 @@ function rebuild(entry) {
     entry.shMesh.geometry.dispose();
     entry.shMesh.geometry = sg;
     const u = entry.shMesh.material.uniforms;
-    u.strength.value = 0.35 - entry.lift * 0.18;
-    u.blurPx.value   = 10.0 + entry.lift * 14.0; // blurrier when lifted
+    u.strength.value = 0.35 - safeLift * 0.18 - peelAmount * 0.10;
+    u.blurPx.value   = 10.0 + safeLift * 14.0 + peelAmount * 9.0;
   }
 }
 
-// Position the flat preview plane in front of the cylinder, centred in screen
-// space. We place it at world (0, 0, poleRadius + offset) — i.e. directly on
-// the camera-facing side of the pole — and scale it to the sticker's size.
+// Flat detached representation. It stays tangent to the cylinder at the
+// pointer-mapped surface position, so dragging remains predictable while the
+// artwork itself is no longer bent around the pole.
 function buildFlatGeometry(S, aspect, margin) {
   const m  = (typeof margin === 'number') ? margin : 0.08;
   const ar = (aspect && aspect > 0) ? aspect : 1;
@@ -901,27 +1003,117 @@ function buildFlatGeometry(S, aspect, margin) {
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   g.setIndex(idx);
+  g.computeVertexNormals();
   return g;
 }
 function updateFlatPose(entry) {
   if (!entry.flat) return;
-  // (re)build with margin so the outline shader has room to draw past the
-  // artwork edge; baked at world units so we never need geometry scaling.
-  if (entry.flat.geometry) entry.flat.geometry.dispose();
-  entry.flat.geometry = buildFlatGeometry(entry.S, entry.aspect, 0.08);
-  entry.flat.scale.set(1, 1, 1);
-  entry.flat.rotation.set(0, 0, 0);
-  // x stays 0 (vertical seam centred on screen). y follows viewY so the
-  // sticker stays in the optical centre while the pan tween runs. z sits
-  // just in front of the cylinder.
-  entry.flat.position.set(0, viewY, CFG.poleRadius + 1.2);
+  const radius = CFG.poleRadius + DRAG_LIFT + 0.08;
+  entry.flat.position.set(
+    Math.sin(entry.theta) * radius,
+    entry.y,
+    Math.cos(entry.theta) * radius
+  );
+  entry.flat.rotation.set(0, entry.theta, 0);
 }
-// Called every frame for the currently-dragged sticker so it tracks viewY.
+function detachSticker(entry) {
+  if (!entry || entry.detached) return;
+  entry.detached = true;
+  entry.peel = 1;
+  entry._targetPeel = 1;
+  entry.mesh.visible = false;
+  if (entry.shMesh) entry.shMesh.visible = false;
+  updateFlatPose(entry);
+  entry.flat.visible = true;
+  entry.flat.scale.set(0.94, 0.94, 0.94);
+  gsap.to(entry.flat.scale, {
+    x: 1, y: 1, z: 1,
+    duration: reducedMotion() ? 0 : 0.16,
+    ease: 'power2.out',
+    overwrite: 'auto'
+  });
+  if (peelAudioState) emitPeelGrain(peelAudioState.peak, 1, true);
+  // The tear is complete. Flat dragging and reattachment must be silent.
+  peelAudioState = null;
+}
+// Called every frame for the currently dragged flat sticker.
 function syncFlatToView() {
   if (dragging && dragging.flat && dragging.flat.visible) {
-    dragging.flat.position.y = viewY;
+    updateFlatPose(dragging);
   }
 }
+
+/* ---------- lightweight velocity-reactive peel audio ----------
+ * Inspired by Sticker Forge's interaction model, but synthesized locally:
+ * no copied samples, no extra download, and silence while the pointer rests.
+ */
+let peelAudioCtx = null;
+let peelNoise = null;
+let peelAudioState = null;
+function ensurePeelAudio() {
+  if (peelAudioCtx) {
+    if (peelAudioCtx.state === 'suspended') peelAudioCtx.resume();
+    return peelAudioCtx;
+  }
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return null;
+  peelAudioCtx = new AudioContext();
+  const length = Math.floor(peelAudioCtx.sampleRate * 0.16);
+  peelNoise = peelAudioCtx.createBuffer(1, length, peelAudioCtx.sampleRate);
+  const data = peelNoise.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < length; i++) {
+    const white = Math.random() * 2 - 1;
+    last = last * 0.72 + white * 0.28;
+    data[i] = last;
+  }
+  return peelAudioCtx;
+}
+function startPeelAudio(e) {
+  ensurePeelAudio();
+  peelAudioState = { x: e.clientX, y: e.clientY, at: performance.now(), grainAt: 0, peak: 0 };
+}
+function emitPeelGrain(speed, progress, release) {
+  const ctx = ensurePeelAudio();
+  if (!ctx || !peelNoise) return;
+  const now = ctx.currentTime;
+  const src = ctx.createBufferSource();
+  const filter = ctx.createBiquadFilter();
+  const gain = ctx.createGain();
+  src.buffer = peelNoise;
+  src.playbackRate.value = release ? 0.64 : 0.78 + Math.random() * 0.5 + speed * 0.002;
+  filter.type = 'bandpass';
+  filter.frequency.value = release ? 620 : 900 + progress * 1500 + speed * 3;
+  filter.Q.value = release ? 0.7 : 0.45 + progress * 0.7;
+  const level = release ? 0.018 : Math.min(0.032, 0.006 + speed * 0.00012);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(level, now + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + (release ? 0.10 : 0.045));
+  src.connect(filter).connect(gain).connect(ctx.destination);
+  src.start(now, Math.random() * 0.04, release ? 0.12 : 0.055);
+  src.stop(now + 0.14);
+}
+function playPeelAudio(e, progress) {
+  if (!peelAudioState) return;
+  const now = performance.now();
+  const dt = Math.max(8, now - peelAudioState.at);
+  const speed = Math.hypot(e.clientX - peelAudioState.x, e.clientY - peelAudioState.y) / dt * 1000;
+  peelAudioState.peak = Math.max(peelAudioState.peak, speed);
+  const interval = clamp(92 - speed * 0.16, 24, 90);
+  if (speed > 28 && now - peelAudioState.grainAt > interval) {
+    emitPeelGrain(speed, progress, false);
+    peelAudioState.grainAt = now;
+  }
+  peelAudioState.x = e.clientX;
+  peelAudioState.y = e.clientY;
+  peelAudioState.at = now;
+}
+function finishPeelAudio(detached) {
+  // Cancelling or reattaching is silent; grains only play while material is
+  // actively being peeled from the pole.
+  peelAudioState = null;
+}
+
 /* ============ INTERACTION ============ */
 let lastTapAt = 0;     // for double-tap detection on empty space
 let rotateMoved = false;
@@ -930,8 +1122,21 @@ function bindEvents() {
   el.addEventListener('pointerdown', onDown);
   el.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
+  el.addEventListener('pointercancel', (e) => onUp(e, true));
+  el.addEventListener('lostpointercapture', (e) => {
+    if (dragging || rotating) onUp(e, true);
+  });
+  window.addEventListener('blur', () => {
+    if (dragging || rotating) onUp({}, true);
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && (dragging || rotating)) onUp({}, true);
+  });
   window.addEventListener('resize', onResize);
-  el.addEventListener('pointerleave', hideTag);
+  el.addEventListener('pointerleave', () => {
+    hideTag();
+    cancelHoverFocus();
+  });
   // mouse wheel / trackpad vertical scroll -> pan view up/down
   el.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -968,98 +1173,171 @@ function pickStickerByAlpha() {
     if (pHit && h.distance > pHit.distance) break; // behind the pole — done
     const entry = stickers.find(s => s.mesh === h.object);
     if (!entry || !h.uv) continue;
-    if (alphaAt(entry, h.uv) > 0.05) return entry;
+    if (alphaAt(entry, h.uv) > 0.05) {
+      entry._pickUv = h.uv.clone();
+      return entry;
+    }
   }
   return null;
 }
 function onDown(e) {
+  // Recover defensively if the browser swallowed the previous gesture's
+  // ending event. A new gesture must never inherit a curled sticker state.
+  if (dragging || rotating) onUp(e, true);
   // Any pointer activity dismisses the wiggle hint for this session; if the
   // visitor actually opens a sticker we'll persist it (see onUp).
   stopHint();
+  // A fresh gesture takes control from hover focus or the previous glide.
+  if (_rotAnim) { _rotAnim.kill(); _rotAnim = null; }
+  if (_yAnim) { _yAnim.kill(); _yAnim = null; }
   setPointer(e);
   raycaster.setFromCamera(pointer, camera);
   const picked = pickStickerByAlpha();
   downPos = { x: e.clientX, y: e.clientY };
   try { renderer.domElement.setPointerCapture(e.pointerId); } catch (err) {}
   if (picked) {
+    cancelHoverFocus();
+    clearFocusedSticker();
     dragging = picked;
     dragging.mesh.renderOrder = ++topOrder;
-    const targetAngle = picked.theta;
-    dragging._startX = e.clientX;
-    dragging._baseAngle = targetAngle;
-    dragging._baseTheta = picked.theta;
     dragging._touch = (e.pointerType === 'touch');
-    dragging.lift = DRAG_LIFT;
-    rebuild(dragging);
+    dragging._targetTheta = picked.theta;
+    dragging._targetY = picked.y;
+    dragging._targetPeel = PEEL_START;
+    dragging.detached = false;
+    const uv = picked._pickUv || { x: 0.5, y: 0.5 };
+    const edgeDistances = [
+      ['left', uv.x], ['right', 1 - uv.x],
+      ['bottom', uv.y], ['top', 1 - uv.y]
+    ];
+    edgeDistances.sort((a, b) => a[1] - b[1]);
+    dragging.peelEdge = edgeDistances[0][0];
+    startPeelAudio(e);
+    const surfaceHit = raycaster.intersectObject(pole, false)[0];
+    const hitTheta = surfaceHit ? Math.atan2(surfaceHit.point.x, surfaceHit.point.z) : picked.theta;
+    dragging._grabThetaOffset = shortestAngleDelta(picked.theta, hitTheta);
+    dragging._grabYOffset = surfaceHit ? picked.y - surfaceHit.point.y : 0;
+    gsap.killTweensOf(dragging, 'lift,peel');
+    const pressed = dragging;
+    gsap.to(pressed, {
+      lift: 0.018,
+      peel: PEEL_START,
+      duration: reducedMotion() ? 0 : 0.13,
+      ease: 'power2.out',
+      overwrite: 'auto',
+      // Capture this entry. Referencing the mutable global `dragging` here
+      // can rebuild the wrong sticker after a cancelled gesture.
+      onUpdate: () => rebuild(pressed),
+    });
     dragMoved = false;
-    snapping = true;
-    // Snap horizontally to centre the sticker. Snap vertically only when the
-    // sticker's y is within the current safe viewport range — otherwise the
-    // pole's top/bottom would enter frame and baseCam() would have to clamp
-    // viewY anyway, producing a visible bounce-back.
-    const safe = safeViewYRange();
-    const tweens = [tweenCameraAngle(targetAngle, 380)];
-    if (Math.abs(picked.y) <= safe) tweens.push(tweenViewY(picked.y, 380));
-    Promise.all(tweens).then(() => { snapping = false; });
     return;
   }
   // empty space (or click landed on the pole / back-side sticker) -> spin & pan
+  cancelHoverFocus();
+  clearFocusedSticker();
   rotateMoved = false;
-  rotating = { startX: e.clientX, startY: e.clientY, baseRot: cameraAngle, baseY: viewY, touch: (e.pointerType === 'touch') };
+  rotating = {
+    startX: e.clientX,
+    startY: e.clientY,
+    lastX: e.clientX,
+    lastY: e.clientY,
+    lastAt: performance.now(),
+    velocityAngle: 0,
+    velocityY: 0,
+    baseRot: cameraAngle,
+    baseY: viewY,
+    touch: (e.pointerType === 'touch'),
+  };
 }
 function onMove(e) {
+  // Mouse buttons reaching zero without pointerup means capture was lost.
+  if ((dragging || rotating) && e.pointerType === 'mouse' && e.buttons === 0) {
+    onUp(e, true);
+    return;
+  }
   updateHoverTag(e);
   if (rotating) {
+    const now = performance.now();
     const dx = e.clientX - rotating.startX;
     const dy = e.clientY - rotating.startY;
     if (Math.abs(dx) > 4 || Math.abs(dy) > 4) rotateMoved = true;
-    cameraAngle = rotating.baseRot - (dx / window.innerWidth) * Math.PI * 2;
+    const turns = rotating.touch ? ORBIT_TOUCH_TURNS_PER_VIEW : ORBIT_TURNS_PER_VIEW;
+    const anglePerPx = -(Math.PI * 2 * turns) / Math.max(1, window.innerWidth);
+    cameraAngle = rotating.baseRot + dx * anglePerPx;
     // Vertical pan works for both mouse and touch — baseCam() clamps viewY
-    // to the safe range so the pole's caps stay out of frame. Touch needs a
-    // higher gain because finger travel is shorter than mouse travel.
-    const gain = rotating.touch ? 0.045 : 0.025;
+    // to the safe range. Touch keeps a little more gain because finger travel
+    // is shorter than mouse travel.
+    const gain = rotating.touch ? PAN_GAIN_TOUCH : PAN_GAIN_MOUSE;
     viewY = clamp(rotating.baseY + dy * gain, -CFG.viewYRange, CFG.viewYRange);
+
+    // Low-pass recent pointer speed so noisy events do not create a wild
+    // throw. Velocity is stored in camera units, independent of viewport size.
+    const dt = Math.max(8, Math.min(50, now - rotating.lastAt));
+    const instantAngleV = (e.clientX - rotating.lastX) * anglePerPx / dt;
+    const instantYV = (e.clientY - rotating.lastY) * gain / dt;
+    rotating.velocityAngle = rotating.velocityAngle * 0.68 + instantAngleV * 0.32;
+    rotating.velocityY = rotating.velocityY * 0.68 + instantYV * 0.32;
+    rotating.lastX = e.clientX;
+    rotating.lastY = e.clientY;
+    rotating.lastAt = now;
     return;
   }
   if (!dragging) return;
-  if (snapping) return;                       // wait until the snap finishes
-  if (Math.abs(e.clientX - downPos.x) > 4 || Math.abs(e.clientY - downPos.y) > 4)
-    dragMoved = true;
-  // Sticker drag:
-  //   horizontal -> rotate the pole UNDER the sticker; sticker.theta counter-
-  //                 rotates so the sticker stays anchored at its pickup
-  //                 screen-X position. Net effect: pole spins, sticker stays
-  //                 visually put, sticker's LOCAL position on the pole shifts.
-  //   vertical   -> sticker.y follows the cursor's projected y on the pole.
-  const dx = e.clientX - dragging._startX;
-  const turn = (dx / window.innerWidth) * Math.PI * 2;
-  cameraAngle = dragging._baseAngle + turn;
-  dragging.theta = dragging._baseTheta + turn;
+  const pointerTravel = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
+  if (pointerTravel > 6) dragMoved = true;
+  dragging._targetPeel = clamp(PEEL_START + pointerTravel / PEEL_DISTANCE, PEEL_START, 1);
+  if (!dragging.detached) {
+    playPeelAudio(e, dragging._targetPeel);
+    if (dragging._targetPeel >= PEEL_DETACH) detachSticker(dragging);
+  }
+  // Keep the camera still and map the pointer directly onto the pole. The
+  // original pickup offset prevents the sticker jumping under the cursor.
   setPointer(e);
   raycaster.setFromCamera(pointer, camera);
   const hit = raycaster.intersectObject(pole, false)[0];
   if (hit) {
-    const local = pole.worldToLocal(hit.point.clone());
-    const ny = clamp(local.y, -CFG.viewYRange, CFG.viewYRange);
-    dragging.y = ny;
-    // Camera follows the sticker vertically — but only inside the current
-    // safe range, AND only on mouse (touch + camera-follow creates a feedback
-    // loop). Once the sticker leaves the safe range we leave viewY alone so
-    // baseCam() doesn't have to fight the tween to keep the pole's caps out
-    // of frame.
-    if (!dragging._touch) {
-      const safe = safeViewYRange();
-      if (Math.abs(ny) <= safe) viewY = ny;
-    }
+    let hitTheta = Math.atan2(hit.point.x, hit.point.z);
+    hitTheta = closestEquivalentAngle(hitTheta, dragging._targetTheta);
+    dragging._targetTheta = hitTheta + dragging._grabThetaOffset;
+    dragging._targetY = clamp(
+      hit.point.y + dragging._grabYOffset,
+      -CFG.viewYRange,
+      CFG.viewYRange
+    );
   }
-  rebuild(dragging);
-
 }
-function onUp(e) {
-  try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (err) {}
+let finishingPointer = false;
+function onUp(e = {}, cancelled = false) {
+  if (finishingPointer) return;
+  finishingPointer = true;
+  try {
   if (rotating) {
-    const wasTap = !rotateMoved;
+    const wasTap = !cancelled && !rotateMoved;
+    const release = rotating;
     rotating = null;
+    if (!cancelled && !wasTap && !reducedMotion()) {
+      // A short pause before release intentionally cancels momentum.
+      const freshness = clamp(1 - (performance.now() - release.lastAt) / 110, 0, 1);
+      const angleThrow = clamp(
+        release.velocityAngle * INERTIA_LOOKAHEAD_MS * freshness,
+        -MAX_ORBIT_THROW,
+        MAX_ORBIT_THROW
+      );
+      const yThrow = clamp(
+        release.velocityY * INERTIA_LOOKAHEAD_MS * freshness,
+        -MAX_PAN_THROW,
+        MAX_PAN_THROW
+      );
+      const strength = Math.max(
+        Math.abs(angleThrow) / MAX_ORBIT_THROW,
+        Math.abs(yThrow) / MAX_PAN_THROW
+      );
+      if (strength > 0.025) {
+        const glideMs = 360 + strength * 420;
+        tweenCameraAngle(cameraAngle + angleThrow, glideMs);
+        tweenViewY(viewY + yThrow, glideMs);
+      }
+    }
     // Double-tap on empty space -> spin and pan to the densest sticker cluster.
     if (wasTap) {
       const now = performance.now();
@@ -1082,20 +1360,76 @@ function onUp(e) {
     return;
   }
   if (!dragging) return;
-  if (dragMoved) savePos(dragging.data.id, dragging.theta, dragging.y);
-  else if (modalApi && modalApi.open) {
+  const released = dragging;
+  if (dragMoved) {
+    released.theta = released._targetTheta;
+    released.y = released._targetY;
+    if (!released.detached) rebuild(released);
+    savePos(released.data.id, released.theta, released.y);
+  }
+  else if (!cancelled && modalApi && modalApi.open) {
     // First sticker tap — dismiss the click-hint loop permanently.
     try { localStorage.setItem(HINT_KEY, '1'); } catch (_) {}
     stopHint();
     modalApi.open(dragging.data);
   }
+  // End curl deformation before showing the curved mesh again. Keeping a
+  // partly folded subdivided mesh during reattachment can make neighbouring
+  // triangles self-intersect and appear as vertical image strips.
+  if (released.detached) {
+    released.flat.visible = false;
+    released.detached = false;
+  }
+  released.lift = REST_LIFT;
+  released.peel = 0;
+  released._targetPeel = 0;
+  released.peelEdge = null;
+  rebuild(released);
   // hide the flat preview, restore the curved sticker on the cylinder
-  if (dragging.shMesh) dragging.shMesh.visible = true;
-  dragging.mesh.visible = true;
-  dragging.lift = REST_LIFT;
-  rebuild(dragging);
-  snapping = false;
+  if (released.shMesh) released.shMesh.visible = true;
+  released.mesh.visible = true;
+  finishPeelAudio(dragMoved);
+  gsap.killTweensOf(released, 'lift,peel');
+  // Geometry is rebuilt exactly once at its final safe radius. Reattachment
+  // feedback is material-only, so no transition frame can expose mesh strips.
+  const reflectUniform = released.mesh.material.uniforms.reflectStrength;
+  gsap.killTweensOf(reflectUniform);
+  reflectUniform.value = reducedMotion() ? 0.72 : 0.96;
+  gsap.to(reflectUniform, {
+    value: 0.72,
+    duration: reducedMotion() ? 0 : 0.28,
+    ease: 'power2.out',
+    overwrite: 'auto'
+  });
+  if (released.shMesh) {
+    const shadowUniforms = released.shMesh.material.uniforms;
+    gsap.killTweensOf([shadowUniforms.strength, shadowUniforms.blurPx]);
+    if (!reducedMotion()) {
+      shadowUniforms.strength.value = 0.14;
+      shadowUniforms.blurPx.value = 20;
+    }
+    gsap.to(shadowUniforms.strength, {
+      value: 0.345,
+      duration: reducedMotion() ? 0 : 0.22,
+      ease: 'power2.out',
+      overwrite: 'auto'
+    });
+    gsap.to(shadowUniforms.blurPx, {
+      value: 10.35,
+      duration: reducedMotion() ? 0 : 0.22,
+      ease: 'power2.out',
+      overwrite: 'auto'
+    });
+  }
   dragging = null;
+  } finally {
+    // Clearing state happens before releasing capture so a synchronous
+    // lostpointercapture event cannot run the cleanup twice.
+    try {
+      if (e.pointerId != null) renderer.domElement.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+    finishingPointer = false;
+  }
 }
 
 
@@ -1103,15 +1437,64 @@ function onUp(e) {
 
 function updateHoverTag(e) {
   if (!tagEl) return;
-  if (dragging || rotating) { hideTag(); return; }
+  if (dragging || rotating) { hideTag(); cancelHoverFocus(); return; }
   setPointer(e);
   raycaster.setFromCamera(pointer, camera);
   const picked = pickStickerByAlpha();
   if (picked) {
-    showTag(picked.data.name, e.clientX, e.clientY);
+    if (focusedSticker && focusedSticker !== picked) clearFocusedSticker();
+    if (focusedSticker === picked) updateFocusedTag();
+    else showTag(picked.data.name, e.clientX, e.clientY);
+    scheduleHoverFocus(picked, e);
+  } else if (focusedSticker && focusedPointer
+    && Math.hypot(e.clientX - focusedPointer.x, e.clientY - focusedPointer.y) < 52) {
+    // Camera motion can move the focused sticker away from a stationary
+    // pointer. Keep its anchored label until the user deliberately moves on.
+    updateFocusedTag();
   } else {
+    clearFocusedSticker();
     hideTag();
+    cancelHoverFocus();
   }
+}
+function scheduleHoverFocus(entry, event) {
+  if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+  if (hoverFocusTarget === entry) return;
+  cancelHoverFocus();
+  hoverFocusTarget = entry;
+  const pointerAtIntent = { x: event.clientX, y: event.clientY };
+  hoverFocusTimer = setTimeout(() => {
+    hoverFocusTimer = null;
+    if (dragging || rotating || hoverFocusTarget !== entry) return;
+    focusedSticker = entry;
+    focusedPointer = pointerAtIntent;
+    tagEl.classList.add('anchored');
+    const safe = safeViewYRange();
+    tweenCameraAngle(entry.theta, 480);
+    if (Math.abs(entry.y) <= safe) tweenViewY(entry.y, 480);
+  }, HOVER_FOCUS_DELAY);
+}
+function cancelHoverFocus() {
+  clearTimeout(hoverFocusTimer);
+  hoverFocusTimer = null;
+  hoverFocusTarget = null;
+}
+function clearFocusedSticker() {
+  focusedSticker = null;
+  focusedPointer = null;
+  if (tagEl) tagEl.classList.remove('anchored');
+}
+const _tagSurface = { pos: new THREE.Vector3(), normal: new THREE.Vector3() };
+const _tagProjected = new THREE.Vector3();
+function updateFocusedTag() {
+  if (!focusedSticker || !tagEl) return;
+  getPoleSurface(focusedSticker.theta, focusedSticker.y, _tagSurface, focusedSticker.lift + 0.04);
+  _tagProjected.copy(_tagSurface.pos).project(camera);
+  showTag(
+    focusedSticker.data.name,
+    (_tagProjected.x * 0.5 + 0.5) * container.clientWidth,
+    (-_tagProjected.y * 0.5 + 0.5) * container.clientHeight
+  );
 }
 function showTag(text, x, y) {
   tagEl.textContent = text;
@@ -1140,10 +1523,16 @@ function animate() {
   if (isPaused) return;
   requestAnimationFrame(animate);
 
+  // One shared time uniform drives every laminate highlight. Pausing the
+  // room also pauses the sheen; reduced-motion keeps it view-dependent only.
+  stickerTimeUniform.value = reducedMotion() ? 0 : performance.now() * 0.001;
+
   syncFlatToView();
   stepHint();
   stepAppears();
+  stepDragFollow();
   baseCam();
+  updateFocusedTag();
   renderer.render(scene, camera);
 }
 export function pause()  { isPaused = true; }
@@ -1161,6 +1550,33 @@ function loadPos(id) {
   try { const r = localStorage.getItem('skP_' + id); return r ? JSON.parse(r) : null; } catch (e) { return null; }
 }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function shortestAngleDelta(target, start) {
+  let delta = target - start;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  return delta;
+}
+function closestEquivalentAngle(angle, reference) {
+  return reference + shortestAngleDelta(angle, reference);
+}
+function stepDragFollow() {
+  if (!dragging || dragging._targetTheta == null) return;
+  const follow = dragging._touch ? 0.34 : 0.24;
+  const dTheta = shortestAngleDelta(dragging._targetTheta, dragging.theta);
+  const dY = dragging._targetY - dragging.y;
+  const peelGoal = dragging._targetPeel == null ? dragging.peel : dragging._targetPeel;
+  const dPeel = peelGoal - dragging.peel;
+  const targetLift = 0.018 + Math.max(0, peelGoal - PEEL_START) * DRAG_LIFT;
+  const dLift = targetLift - dragging.lift;
+  if (Math.abs(dTheta) < 0.0002 && Math.abs(dY) < 0.002
+      && Math.abs(dPeel) < 0.002 && Math.abs(dLift) < 0.001) return;
+  dragging.theta += dTheta * follow;
+  dragging.y += dY * follow;
+  dragging.peel += dPeel * (dragging._touch ? 0.30 : 0.23);
+  dragging.lift += dLift * 0.20;
+  if (dragging.detached) updateFlatPose(dragging);
+  else rebuild(dragging);
+}
 /* ============ INTRO REVEAL（森林揭幕） ============ */
 // 全部纹理就绪（manager 空闲）且贴纸已建好后触发一次：
 // DOM 遮罩淡出（index.html 的 onReady），场景内相机环绕归位、
@@ -1186,14 +1602,13 @@ function startReveal() {
     tweenCameraAngle(_revealPose.angle, 1800);
     tweenViewY(clamp(_revealPose.y, -safe, safe), 1800);
   }
-  // 树影光斑像阳光一样渐亮
+  // 树影光斑像阳光一样渐亮；GSAP 统一 easing 与中断覆盖。
   const t0 = performance.now();
   const FROM = 0.2, TO = 1.7;
-  (function ramp(now) {
-    const k = Math.min(1, (now - t0) / 1400);
-    poleMat.userData.goboIntensity.value = FROM + (TO - FROM) * (1 - Math.pow(1 - k, 3));
-    if (k < 1) requestAnimationFrame(ramp);
-  })(t0);
+  gsap.fromTo(poleMat.userData.goboIntensity,
+    { value: FROM },
+    { value: TO, duration: reducedMotion() ? 0 : 1.4,
+      ease: 'power3.out', overwrite: 'auto' });
   // 贴纸错峰弹出
   stickers.forEach((s, i) => {
     if (s.appear >= 1) return;

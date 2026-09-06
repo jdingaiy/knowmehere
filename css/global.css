@@ -207,7 +207,6 @@ body {
   background: var(--white);
   z-index: 800;
   opacity: 0; visibility: hidden;
-  transition: opacity 0.32s ease, visibility 0.32s ease;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -221,10 +220,8 @@ body {
   padding: 0;
   display: flex; flex-direction: column;
   gap: 0;
-  transform: translateY(20px);
-  transition: transform 0.42s cubic-bezier(0.22,0.61,0.36,1);
+  transform: translateY(0);
 }
-.modal-overlay.open .modal-box { transform: translateY(0); }
 
 
 /* close button — pure glass, no border */
@@ -504,7 +501,7 @@ body.modal-open .room-canvas { display: none; }
   filter: drop-shadow(0 8px 18px rgba(60, 55, 50, 0.18));
   animation: ip-fly-in 0.9s cubic-bezier(0.22, 1.16, 0.36, 1) forwards;
   animation-delay: var(--delay);
-  will-change: transform, opacity, left, top;
+  will-change: transform, opacity;
   user-select: none;
   -webkit-user-drag: none;
   cursor: grab;
@@ -545,4 +542,15 @@ body.modal-open .room-canvas { display: none; }
 }
 @media (max-width: 720px) {
   .ip-page { padding: 4vh 4vw; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .ip-fly { opacity: 1; transform: translate(-50%, -50%) rotate(var(--r)); }
+  .ip-hero-hint { animation: none; opacity: 0.65; }
 }
