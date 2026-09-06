@@ -1281,8 +1281,8 @@ function onUp(e) {
   if (released.detached) {
     released.flat.visible = false;
     released.detached = false;
-    released.lift = reducedMotion() ? REST_LIFT : 0.12;
   }
+  released.lift = REST_LIFT;
   released.peel = 0;
   released._targetPeel = 0;
   released.peelEdge = null;
@@ -1292,15 +1292,37 @@ function onUp(e) {
   released.mesh.visible = true;
   finishPeelAudio(dragMoved);
   gsap.killTweensOf(released, 'lift,peel');
-  gsap.to(released, {
-    lift: REST_LIFT,
-    duration: reducedMotion() ? 0 : 0.24,
-    // Never overshoot radially into the pole. The tactile character comes
-    // from the lift timing and shadow compression, not a below-surface bounce.
-    ease: 'power3.out',
-    onUpdate: () => rebuild(released),
-    onComplete: () => { released.peelEdge = null; },
+  // Geometry is rebuilt exactly once at its final safe radius. Reattachment
+  // feedback is material-only, so no transition frame can expose mesh strips.
+  const reflectUniform = released.mesh.material.uniforms.reflectStrength;
+  gsap.killTweensOf(reflectUniform);
+  reflectUniform.value = reducedMotion() ? 0.72 : 0.96;
+  gsap.to(reflectUniform, {
+    value: 0.72,
+    duration: reducedMotion() ? 0 : 0.28,
+    ease: 'power2.out',
+    overwrite: 'auto'
   });
+  if (released.shMesh) {
+    const shadowUniforms = released.shMesh.material.uniforms;
+    gsap.killTweensOf([shadowUniforms.strength, shadowUniforms.blurPx]);
+    if (!reducedMotion()) {
+      shadowUniforms.strength.value = 0.14;
+      shadowUniforms.blurPx.value = 20;
+    }
+    gsap.to(shadowUniforms.strength, {
+      value: 0.345,
+      duration: reducedMotion() ? 0 : 0.22,
+      ease: 'power2.out',
+      overwrite: 'auto'
+    });
+    gsap.to(shadowUniforms.blurPx, {
+      value: 10.35,
+      duration: reducedMotion() ? 0 : 0.22,
+      ease: 'power2.out',
+      overwrite: 'auto'
+    });
+  }
   dragging = null;
 }
 
