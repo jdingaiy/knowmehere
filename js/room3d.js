@@ -251,9 +251,11 @@ texLoader.load(POLE_LIGHT, (loaded) => {
 const stickerVert = `
   varying vec2 vUv;
   varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
   void main(){
     vUv = uv;
     vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -272,8 +274,10 @@ const stickerFrag = `
   uniform float lightMapIntensity;
   uniform float time;
   uniform float appear;
+  uniform float reflectStrength;
   varying vec2 vUv;
   varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
   void main(){
     // 入场 pop：UV 从贴纸中心向外展开，配合 alpha 淡入
     float sc = mix(0.55, 1.0, min(appear, 1.0));
@@ -304,6 +308,22 @@ const stickerFrag = `
     c.rgb += (currentIntensity - 1.0) * lightIntensity * (1.0 - c.rgb) * sunColor * goboMask;
 
     c.a *= smoothstep(0.0, 0.35, appear);
+    // Satin laminate reflection: a broad view-dependent band plus a small
+    // directional highlight. The artwork remains legible instead of being
+    // uniformly washed out, and the sheen travels as the camera/pole moves.
+    if (gl_FrontFacing) {
+      vec3 N = normalize(vWorldNormal);
+      vec3 V = normalize(cameraPosition - vWorldPos);
+      vec3 L = normalize(vec3(-0.35, 0.72, 0.60));
+      vec3 H = normalize(V + L);
+      float specular = pow(max(dot(N, H), 0.0), 28.0);
+      float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+      float viewShift = dot(V, normalize(vec3(0.74, 0.06, 0.67))) * 0.24;
+      float bandPos = fract(uv.x * 0.76 + uv.y * 0.24 + viewShift);
+      float filmBand = exp(-pow((bandPos - 0.5) / 0.15, 2.0));
+      float sheen = clamp(specular * 0.72 + filmBand * 0.25 + fresnel * 0.12, 0.0, 0.72);
+      c.rgb = mix(c.rgb, vec3(1.0, 0.985, 0.95), sheen * reflectStrength);
+    }
     // Curled triangles reveal a warm, subtly fibrous paper back.
     if (!gl_FrontFacing) {
       float fibre = 0.018 * sin(vUv.x * 210.0 + vUv.y * 97.0);
@@ -566,6 +586,7 @@ function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn, peelEntry) 
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   g.setIndex(idx);
+  g.computeVertexNormals();
   g.computeBoundingSphere();
   return g;
 }
@@ -725,7 +746,8 @@ export function addStickers(list) {
         lightMapOffset: { value: new THREE.Vector2(0, 0) },
         lightMapIntensity: { value: 1.45 },
         time: { value: 0 },
-        appear: { value: revealed ? 1 : 0 }
+        appear: { value: revealed ? 1 : 0 },
+        reflectStrength: { value: 0.46 }
       },
       vertexShader: stickerVert, fragmentShader: stickerFrag,
       transparent: true, depthWrite: false, depthTest: true,
@@ -955,6 +977,7 @@ function buildFlatGeometry(S, aspect, margin) {
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   g.setIndex(idx);
+  g.computeVertexNormals();
   return g;
 }
 function updateFlatPose(entry) {
