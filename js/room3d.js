@@ -35,9 +35,19 @@ const CFG = {
 
 let scene, camera, renderer, raycaster, pointer;
 let pole, world, poleLightMap = null;
-let rotating = null;   // { startX, startY, baseRot, baseY } during a drag-the-pole gesture
+let rotating = null;   // pointer samples + velocity during a drag-the-pole gesture
 let viewY = 0;         // vertical pan offset (scroll / swipe)
 let cameraAngle = 0;   // camera orbit angle around the Y axis (radians)
+// Give the pole visual weight: a full-width mouse drag turns only 0.62 of a
+// revolution. Touch stays slightly more responsive, and release velocity is
+// projected into a short, capped glide instead of stopping abruptly.
+const ORBIT_TURNS_PER_VIEW = 0.62;
+const ORBIT_TOUCH_TURNS_PER_VIEW = 0.72;
+const PAN_GAIN_MOUSE = 0.018;
+const PAN_GAIN_TOUCH = 0.032;
+const INERTIA_LOOKAHEAD_MS = 260;
+const MAX_ORBIT_THROW = Math.PI * 0.42;
+const MAX_PAN_THROW = 1.45;
 // Animate cameraAngle (camera orbit around the pole) to a target value.
 // Picks the shorter rotation direction. Returns a promise.
 let _rotAnim = null;
@@ -1177,6 +1187,9 @@ function onDown(e) {
   // Any pointer activity dismisses the wiggle hint for this session; if the
   // visitor actually opens a sticker we'll persist it (see onUp).
   stopHint();
+  // A fresh gesture takes control from hover focus or the previous glide.
+  if (_rotAnim) { _rotAnim.kill(); _rotAnim = null; }
+  if (_yAnim) { _yAnim.kill(); _yAnim = null; }
   setPointer(e);
   raycaster.setFromCamera(pointer, camera);
   const picked = pickStickerByAlpha();
@@ -1220,8 +1233,21 @@ function onDown(e) {
     return;
   }
   // empty space (or click landed on the pole / back-side sticker) -> spin & pan
+  cancelHoverFocus();
+  clearFocusedSticker();
   rotateMoved = false;
-  rotating = { startX: e.clientX, startY: e.clientY, baseRot: cameraAngle, baseY: viewY, touch: (e.pointerType === 'touch') };
+  rotating = {
+    startX: e.clientX,
+    startY: e.clientY,
+    lastX: e.clientX,
+    lastY: e.clientY,
+    lastAt: performance.now(),
+    velocityAngle: 0,
+    velocityY: 0,
+    baseRot: cameraAngle,
+    baseY: viewY,
+    touch: (e.pointerType === 'touch'),
+  };
 }
 function onMove(e) {
   // Mouse buttons reaching zero without pointerup means capture was lost.
@@ -1231,15 +1257,29 @@ function onMove(e) {
   }
   updateHoverTag(e);
   if (rotating) {
+    const now = performance.now();
     const dx = e.clientX - rotating.startX;
     const dy = e.clientY - rotating.startY;
     if (Math.abs(dx) > 4 || Math.abs(dy) > 4) rotateMoved = true;
-    cameraAngle = rotating.baseRot - (dx / window.innerWidth) * Math.PI * 2;
+    const turns = rotating.touch ? ORBIT_TOUCH_TURNS_PER_VIEW : ORBIT_TURNS_PER_VIEW;
+    const anglePerPx = -(Math.PI * 2 * turns) / Math.max(1, window.innerWidth);
+    cameraAngle = rotating.baseRot + dx * anglePerPx;
     // Vertical pan works for both mouse and touch — baseCam() clamps viewY
-    // to the safe range so the pole's caps stay out of frame. Touch needs a
-    // higher gain because finger travel is shorter than mouse travel.
-    const gain = rotating.touch ? 0.045 : 0.025;
+    // to the safe range. Touch keeps a little more gain because finger travel
+    // is shorter than mouse travel.
+    const gain = rotating.touch ? PAN_GAIN_TOUCH : PAN_GAIN_MOUSE;
     viewY = clamp(rotating.baseY + dy * gain, -CFG.viewYRange, CFG.viewYRange);
+
+    // Low-pass recent pointer speed so noisy events do not create a wild
+    // throw. Velocity is stored in camera units, independent of viewport size.
+    const dt = Math.max(8, Math.min(50, now - rotating.lastAt));
+    const instantAngleV = (e.clientX - rotating.lastX) * anglePerPx / dt;
+    const instantYV = (e.clientY - rotating.lastY) * gain / dt;
+    rotating.velocityAngle = rotating.velocityAngle * 0.68 + instantAngleV * 0.32;
+    rotating.velocityY = rotating.velocityY * 0.68 + instantYV * 0.32;
+    rotating.lastX = e.clientX;
+    rotating.lastY = e.clientY;
+    rotating.lastAt = now;
     return;
   }
   if (!dragging) return;
@@ -1273,7 +1313,31 @@ function onUp(e = {}, cancelled = false) {
   try {
   if (rotating) {
     const wasTap = !cancelled && !rotateMoved;
+    const release = rotating;
     rotating = null;
+    if (!cancelled && !wasTap && !reducedMotion()) {
+      // A short pause before release intentionally cancels momentum.
+      const freshness = clamp(1 - (performance.now() - release.lastAt) / 110, 0, 1);
+      const angleThrow = clamp(
+        release.velocityAngle * INERTIA_LOOKAHEAD_MS * freshness,
+        -MAX_ORBIT_THROW,
+        MAX_ORBIT_THROW
+      );
+      const yThrow = clamp(
+        release.velocityY * INERTIA_LOOKAHEAD_MS * freshness,
+        -MAX_PAN_THROW,
+        MAX_PAN_THROW
+      );
+      const strength = Math.max(
+        Math.abs(angleThrow) / MAX_ORBIT_THROW,
+        Math.abs(yThrow) / MAX_PAN_THROW
+      );
+      if (strength > 0.025) {
+        const glideMs = 360 + strength * 420;
+        tweenCameraAngle(cameraAngle + angleThrow, glideMs);
+        tweenViewY(viewY + yThrow, glideMs);
+      }
+    }
     // Double-tap on empty space -> spin and pan to the densest sticker cluster.
     if (wasTap) {
       const now = performance.now();
