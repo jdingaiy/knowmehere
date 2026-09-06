@@ -15,6 +15,7 @@ import * as THREE from './three.module.js';
 
 const gsap = window.gsap;
 const reducedMotion = () => window.__motionReduced?.() ?? false;
+const stickerTimeUniform = { value: 0 };
 
 const CFG = {
   poleRadius: 4.2,
@@ -318,11 +319,14 @@ const stickerFrag = `
       vec3 H = normalize(V + L);
       float specular = pow(max(dot(N, H), 0.0), 28.0);
       float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-      float viewShift = dot(V, normalize(vec3(0.74, 0.06, 0.67))) * 0.24;
-      float bandPos = fract(uv.x * 0.76 + uv.y * 0.24 + viewShift);
-      float filmBand = exp(-pow((bandPos - 0.5) / 0.15, 2.0));
-      float sheen = clamp(specular * 0.72 + filmBand * 0.25 + fresnel * 0.12, 0.0, 0.72);
-      c.rgb = mix(c.rgb, vec3(1.0, 0.985, 0.95), sheen * reflectStrength);
+      float viewShift = dot(V, normalize(vec3(0.74, 0.06, 0.67))) * 0.30;
+      float idleShift = time * 0.035;
+      float bandPos = fract(uv.x * 0.74 + uv.y * 0.26 + viewShift + idleShift);
+      float filmBand = exp(-pow((bandPos - 0.5) / 0.115, 2.0));
+      float fineGlint = exp(-pow((bandPos - 0.52) / 0.035, 2.0));
+      float sheen = clamp(specular * 0.90 + filmBand * 0.58 + fineGlint * 0.18 + fresnel * 0.22, 0.0, 0.92);
+      vec3 filmColor = mix(vec3(1.0, 0.975, 0.93), vec3(0.86, 0.94, 1.0), 0.42 + 0.18 * sin(time * 0.35));
+      c.rgb = mix(c.rgb, filmColor, sheen * reflectStrength);
     }
     // Curled triangles reveal a warm, subtly fibrous paper back.
     if (!gl_FrontFacing) {
@@ -745,9 +749,9 @@ export function addStickers(list) {
         lightMapRepeat: { value: new THREE.Vector2(1.0, 1.0) },
         lightMapOffset: { value: new THREE.Vector2(0, 0) },
         lightMapIntensity: { value: 1.45 },
-        time: { value: 0 },
+        time: stickerTimeUniform,
         appear: { value: revealed ? 1 : 0 },
-        reflectStrength: { value: 0.46 }
+        reflectStrength: { value: 0.72 }
       },
       vertexShader: stickerVert, fragmentShader: stickerFrag,
       transparent: true, depthWrite: false, depthTest: true,
@@ -1255,7 +1259,7 @@ function onUp(e) {
   if (dragMoved) {
     released.theta = released._targetTheta;
     released.y = released._targetY;
-    rebuild(released);
+    if (!released.detached) rebuild(released);
     savePos(released.data.id, released.theta, released.y);
   }
   else if (modalApi && modalApi.open) {
@@ -1264,15 +1268,18 @@ function onUp(e) {
     stopHint();
     modalApi.open(dragging.data);
   }
-  // A detached flat sticker folds back onto the cylinder at its new position.
-  // Re-enter with a partial curl so the swap is perceived as reattachment,
-  // not a shape pop.
+  // End curl deformation before showing the curved mesh again. Keeping a
+  // partly folded subdivided mesh during reattachment can make neighbouring
+  // triangles self-intersect and appear as vertical image strips.
   if (released.detached) {
     released.flat.visible = false;
     released.detached = false;
-    released.peel = reducedMotion() ? 0 : 0.52;
     released.lift = reducedMotion() ? REST_LIFT : 0.12;
   }
+  released.peel = 0;
+  released._targetPeel = 0;
+  released.peelEdge = null;
+  rebuild(released);
   // hide the flat preview, restore the curved sticker on the cylinder
   if (released.shMesh) released.shMesh.visible = true;
   released.mesh.visible = true;
@@ -1280,7 +1287,6 @@ function onUp(e) {
   gsap.killTweensOf(released, 'lift,peel');
   gsap.to(released, {
     lift: REST_LIFT,
-    peel: 0,
     duration: reducedMotion() ? 0 : 0.24,
     ease: 'back.out(1.35)',
     onUpdate: () => rebuild(released),
@@ -1379,6 +1385,10 @@ function renderOnce() { if (renderer && scene && camera) renderer.render(scene, 
 function animate() {
   if (isPaused) return;
   requestAnimationFrame(animate);
+
+  // One shared time uniform drives every laminate highlight. Pausing the
+  // room also pauses the sheen; reduced-motion keeps it view-dependent only.
+  stickerTimeUniform.value = reducedMotion() ? 0 : performance.now() * 0.001;
 
   syncFlatToView();
   stepHint();
