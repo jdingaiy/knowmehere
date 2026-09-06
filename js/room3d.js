@@ -85,6 +85,8 @@ let isPaused = false;
 const HOVER_FOCUS_DELAY = 220;
 let hoverFocusTimer = null;
 let hoverFocusTarget = null;
+let focusedSticker = null;
+let focusedPointer = null;
 // One-shot hint: until the visitor has clicked any sticker, periodically
 // wiggle a random visible one to suggest they're interactive. The flag is
 // persisted so the hint never replays for returning visitors.
@@ -991,15 +993,23 @@ function onDown(e) {
   try { renderer.domElement.setPointerCapture(e.pointerId); } catch (err) {}
   if (picked) {
     cancelHoverFocus();
+    clearFocusedSticker();
     dragging = picked;
     dragging.mesh.renderOrder = ++topOrder;
-    const targetAngle = picked.theta;
-    dragging._startX = e.clientX;
-    dragging._baseAngle = targetAngle;
-    dragging._baseTheta = picked.theta;
     dragging._touch = (e.pointerType === 'touch');
-    dragging.lift = DRAG_LIFT;
-    rebuild(dragging);
+    dragging._targetTheta = picked.theta;
+    dragging._targetY = picked.y;
+    const surfaceHit = raycaster.intersectObject(pole, false)[0];
+    const hitTheta = surfaceHit ? Math.atan2(surfaceHit.point.x, surfaceHit.point.z) : picked.theta;
+    dragging._grabThetaOffset = shortestAngleDelta(picked.theta, hitTheta);
+    dragging._grabYOffset = surfaceHit ? picked.y - surfaceHit.point.y : 0;
+    gsap.killTweensOf(dragging, 'lift');
+    gsap.to(dragging, {
+      lift: DRAG_LIFT,
+      duration: reducedMotion() ? 0 : 0.14,
+      ease: 'power2.out',
+      onUpdate: () => rebuild(dragging),
+    });
     dragMoved = false;
     return;
   }
@@ -1022,37 +1032,23 @@ function onMove(e) {
     return;
   }
   if (!dragging) return;
-  if (Math.abs(e.clientX - downPos.x) > 4 || Math.abs(e.clientY - downPos.y) > 4)
+  if (Math.abs(e.clientX - downPos.x) > 6 || Math.abs(e.clientY - downPos.y) > 6)
     dragMoved = true;
-  // Sticker drag:
-  //   horizontal -> rotate the pole UNDER the sticker; sticker.theta counter-
-  //                 rotates so the sticker stays anchored at its pickup
-  //                 screen-X position. Net effect: pole spins, sticker stays
-  //                 visually put, sticker's LOCAL position on the pole shifts.
-  //   vertical   -> sticker.y follows the cursor's projected y on the pole.
-  const dx = e.clientX - dragging._startX;
-  const turn = (dx / window.innerWidth) * Math.PI * 2;
-  cameraAngle = dragging._baseAngle + turn;
-  dragging.theta = dragging._baseTheta + turn;
+  // Keep the camera still and map the pointer directly onto the pole. The
+  // original pickup offset prevents the sticker jumping under the cursor.
   setPointer(e);
   raycaster.setFromCamera(pointer, camera);
   const hit = raycaster.intersectObject(pole, false)[0];
   if (hit) {
-    const local = pole.worldToLocal(hit.point.clone());
-    const ny = clamp(local.y, -CFG.viewYRange, CFG.viewYRange);
-    dragging.y = ny;
-    // Camera follows the sticker vertically — but only inside the current
-    // safe range, AND only on mouse (touch + camera-follow creates a feedback
-    // loop). Once the sticker leaves the safe range we leave viewY alone so
-    // baseCam() doesn't have to fight the tween to keep the pole's caps out
-    // of frame.
-    if (!dragging._touch) {
-      const safe = safeViewYRange();
-      if (Math.abs(ny) <= safe) viewY = ny;
-    }
+    let hitTheta = Math.atan2(hit.point.x, hit.point.z);
+    hitTheta = closestEquivalentAngle(hitTheta, dragging._targetTheta);
+    dragging._targetTheta = hitTheta + dragging._grabThetaOffset;
+    dragging._targetY = clamp(
+      hit.point.y + dragging._grabYOffset,
+      -CFG.viewYRange,
+      CFG.viewYRange
+    );
   }
-  rebuild(dragging);
-
 }
 function onUp(e) {
   try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (err) {}
@@ -1081,7 +1077,13 @@ function onUp(e) {
     return;
   }
   if (!dragging) return;
-  if (dragMoved) savePos(dragging.data.id, dragging.theta, dragging.y);
+  const released = dragging;
+  if (dragMoved) {
+    released.theta = released._targetTheta;
+    released.y = released._targetY;
+    rebuild(released);
+    savePos(released.data.id, released.theta, released.y);
+  }
   else if (modalApi && modalApi.open) {
     // First sticker tap — dismiss the click-hint loop permanently.
     try { localStorage.setItem(HINT_KEY, '1'); } catch (_) {}
@@ -1089,10 +1091,15 @@ function onUp(e) {
     modalApi.open(dragging.data);
   }
   // hide the flat preview, restore the curved sticker on the cylinder
-  if (dragging.shMesh) dragging.shMesh.visible = true;
-  dragging.mesh.visible = true;
-  dragging.lift = REST_LIFT;
-  rebuild(dragging);
+  if (released.shMesh) released.shMesh.visible = true;
+  released.mesh.visible = true;
+  gsap.killTweensOf(released, 'lift');
+  gsap.to(released, {
+    lift: REST_LIFT,
+    duration: reducedMotion() ? 0 : 0.24,
+    ease: 'back.out(1.35)',
+    onUpdate: () => rebuild(released),
+  });
   dragging = null;
 }
 
@@ -1106,9 +1113,17 @@ function updateHoverTag(e) {
   raycaster.setFromCamera(pointer, camera);
   const picked = pickStickerByAlpha();
   if (picked) {
-    showTag(picked.data.name, e.clientX, e.clientY);
+    if (focusedSticker && focusedSticker !== picked) clearFocusedSticker();
+    if (focusedSticker === picked) updateFocusedTag();
+    else showTag(picked.data.name, e.clientX, e.clientY);
     scheduleHoverFocus(picked, e);
+  } else if (focusedSticker && focusedPointer
+    && Math.hypot(e.clientX - focusedPointer.x, e.clientY - focusedPointer.y) < 52) {
+    // Camera motion can move the focused sticker away from a stationary
+    // pointer. Keep its anchored label until the user deliberately moves on.
+    updateFocusedTag();
   } else {
+    clearFocusedSticker();
     hideTag();
     cancelHoverFocus();
   }
@@ -1118,9 +1133,13 @@ function scheduleHoverFocus(entry, event) {
   if (hoverFocusTarget === entry) return;
   cancelHoverFocus();
   hoverFocusTarget = entry;
+  const pointerAtIntent = { x: event.clientX, y: event.clientY };
   hoverFocusTimer = setTimeout(() => {
     hoverFocusTimer = null;
     if (dragging || rotating || hoverFocusTarget !== entry) return;
+    focusedSticker = entry;
+    focusedPointer = pointerAtIntent;
+    tagEl.classList.add('anchored');
     const safe = safeViewYRange();
     tweenCameraAngle(entry.theta, 480);
     if (Math.abs(entry.y) <= safe) tweenViewY(entry.y, 480);
@@ -1130,6 +1149,23 @@ function cancelHoverFocus() {
   clearTimeout(hoverFocusTimer);
   hoverFocusTimer = null;
   hoverFocusTarget = null;
+}
+function clearFocusedSticker() {
+  focusedSticker = null;
+  focusedPointer = null;
+  if (tagEl) tagEl.classList.remove('anchored');
+}
+const _tagSurface = { pos: new THREE.Vector3(), normal: new THREE.Vector3() };
+const _tagProjected = new THREE.Vector3();
+function updateFocusedTag() {
+  if (!focusedSticker || !tagEl) return;
+  getPoleSurface(focusedSticker.theta, focusedSticker.y, _tagSurface, focusedSticker.lift + 0.04);
+  _tagProjected.copy(_tagSurface.pos).project(camera);
+  showTag(
+    focusedSticker.data.name,
+    (_tagProjected.x * 0.5 + 0.5) * container.clientWidth,
+    (-_tagProjected.y * 0.5 + 0.5) * container.clientHeight
+  );
 }
 function showTag(text, x, y) {
   tagEl.textContent = text;
@@ -1161,7 +1197,9 @@ function animate() {
   syncFlatToView();
   stepHint();
   stepAppears();
+  stepDragFollow();
   baseCam();
+  updateFocusedTag();
   renderer.render(scene, camera);
 }
 export function pause()  { isPaused = true; }
@@ -1179,6 +1217,25 @@ function loadPos(id) {
   try { const r = localStorage.getItem('skP_' + id); return r ? JSON.parse(r) : null; } catch (e) { return null; }
 }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function shortestAngleDelta(target, start) {
+  let delta = target - start;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  return delta;
+}
+function closestEquivalentAngle(angle, reference) {
+  return reference + shortestAngleDelta(angle, reference);
+}
+function stepDragFollow() {
+  if (!dragging || dragging._targetTheta == null) return;
+  const follow = dragging._touch ? 0.34 : 0.24;
+  const dTheta = shortestAngleDelta(dragging._targetTheta, dragging.theta);
+  const dY = dragging._targetY - dragging.y;
+  if (Math.abs(dTheta) < 0.0002 && Math.abs(dY) < 0.002) return;
+  dragging.theta += dTheta * follow;
+  dragging.y += dY * follow;
+  rebuild(dragging);
+}
 /* ============ INTRO REVEAL（森林揭幕） ============ */
 // 全部纹理就绪（manager 空闲）且贴纸已建好后触发一次：
 // DOM 遮罩淡出（index.html 的 onReady），场景内相机环绕归位、
