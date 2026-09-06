@@ -96,6 +96,7 @@ const DRAG_LIFT = 0.22;    // detached height after a deliberate peel
 const REST_LIFT = 0.005;   // resting lift just off the surface
 const PEEL_START = 0.14;   // small edge curl on pointer-down
 const PEEL_DISTANCE = 118; // pointer pixels needed for a full peel
+const PEEL_DETACH = 0.78;  // curl becomes a free, flat sticker after this point
 let container, modalApi, tagEl;
 
 /* ---------- loading manager + reveal (intro animation) state ---------- */
@@ -698,6 +699,10 @@ export function addStickers(list) {
           entry._alphaCtx = rayCtx;
           
           rebuild(entry);
+          if (entry.flat) {
+            entry.flat.geometry.dispose();
+            entry.flat.geometry = buildFlatGeometry(entry.S, entry.aspect, 0.08);
+          }
         }
         renderOnce();
       },
@@ -751,7 +756,11 @@ export function addStickers(list) {
     const mesh = new THREE.Mesh(buildStickerGeometry(theta, y, S), mat);
     mesh.renderOrder = 2 + i;
     world.add(mesh);
-    stickers.push({ mesh, shMesh, data: d, theta, y, S, lift: REST_LIFT, peel: 0, peelEdge: null, aspect: 1, appear: revealed ? 1 : 0 });
+    const flat = new THREE.Mesh(buildFlatGeometry(S, 1, 0.08), mat);
+    flat.visible = false;
+    flat.renderOrder = 1000;
+    world.add(flat);
+    stickers.push({ mesh, flat, shMesh, data: d, theta, y, S, lift: REST_LIFT, peel: 0, peelEdge: null, detached: false, aspect: 1, appear: revealed ? 1 : 0 });
   });
   // Aim the camera at whichever side of the pole has the most stickers, so
   // the first paint never lands on an empty back. During the intro the camera
@@ -921,9 +930,9 @@ function rebuild(entry) {
   }
 }
 
-// Position the flat preview plane in front of the cylinder, centred in screen
-// space. We place it at world (0, 0, poleRadius + offset) — i.e. directly on
-// the camera-facing side of the pole — and scale it to the sticker's size.
+// Flat detached representation. It stays tangent to the cylinder at the
+// pointer-mapped surface position, so dragging remains predictable while the
+// artwork itself is no longer bent around the pole.
 function buildFlatGeometry(S, aspect, margin) {
   const m  = (typeof margin === 'number') ? margin : 0.08;
   const ar = (aspect && aspect > 0) ? aspect : 1;
@@ -950,21 +959,36 @@ function buildFlatGeometry(S, aspect, margin) {
 }
 function updateFlatPose(entry) {
   if (!entry.flat) return;
-  // (re)build with margin so the outline shader has room to draw past the
-  // artwork edge; baked at world units so we never need geometry scaling.
-  if (entry.flat.geometry) entry.flat.geometry.dispose();
-  entry.flat.geometry = buildFlatGeometry(entry.S, entry.aspect, 0.08);
-  entry.flat.scale.set(1, 1, 1);
-  entry.flat.rotation.set(0, 0, 0);
-  // x stays 0 (vertical seam centred on screen). y follows viewY so the
-  // sticker stays in the optical centre while the pan tween runs. z sits
-  // just in front of the cylinder.
-  entry.flat.position.set(0, viewY, CFG.poleRadius + 1.2);
+  const radius = CFG.poleRadius + DRAG_LIFT + 0.08;
+  entry.flat.position.set(
+    Math.sin(entry.theta) * radius,
+    entry.y,
+    Math.cos(entry.theta) * radius
+  );
+  entry.flat.rotation.set(0, entry.theta, 0);
 }
-// Called every frame for the currently-dragged sticker so it tracks viewY.
+function detachSticker(entry) {
+  if (!entry || entry.detached) return;
+  entry.detached = true;
+  entry.peel = 1;
+  entry._targetPeel = 1;
+  entry.mesh.visible = false;
+  if (entry.shMesh) entry.shMesh.visible = false;
+  updateFlatPose(entry);
+  entry.flat.visible = true;
+  entry.flat.scale.set(0.94, 0.94, 0.94);
+  gsap.to(entry.flat.scale, {
+    x: 1, y: 1, z: 1,
+    duration: reducedMotion() ? 0 : 0.16,
+    ease: 'power2.out',
+    overwrite: 'auto'
+  });
+  if (peelAudioState) emitPeelGrain(peelAudioState.peak, 1, true);
+}
+// Called every frame for the currently dragged flat sticker.
 function syncFlatToView() {
   if (dragging && dragging.flat && dragging.flat.visible) {
-    dragging.flat.position.y = viewY;
+    updateFlatPose(dragging);
   }
 }
 
@@ -1112,6 +1136,7 @@ function onDown(e) {
     dragging._targetTheta = picked.theta;
     dragging._targetY = picked.y;
     dragging._targetPeel = PEEL_START;
+    dragging.detached = false;
     const uv = picked._pickUv || { x: 0.5, y: 0.5 };
     const edgeDistances = [
       ['left', uv.x], ['right', 1 - uv.x],
@@ -1159,6 +1184,7 @@ function onMove(e) {
   if (pointerTravel > 6) dragMoved = true;
   dragging._targetPeel = clamp(PEEL_START + pointerTravel / PEEL_DISTANCE, PEEL_START, 1);
   playPeelAudio(e, dragging._targetPeel);
+  if (!dragging.detached && dragging._targetPeel >= PEEL_DETACH) detachSticker(dragging);
   // Keep the camera still and map the pointer directly onto the pole. The
   // original pickup offset prevents the sticker jumping under the cursor.
   setPointer(e);
@@ -1214,6 +1240,15 @@ function onUp(e) {
     try { localStorage.setItem(HINT_KEY, '1'); } catch (_) {}
     stopHint();
     modalApi.open(dragging.data);
+  }
+  // A detached flat sticker folds back onto the cylinder at its new position.
+  // Re-enter with a partial curl so the swap is perceived as reattachment,
+  // not a shape pop.
+  if (released.detached) {
+    released.flat.visible = false;
+    released.detached = false;
+    released.peel = reducedMotion() ? 0 : 0.52;
+    released.lift = reducedMotion() ? REST_LIFT : 0.12;
   }
   // hide the flat preview, restore the curved sticker on the cylinder
   if (released.shMesh) released.shMesh.visible = true;
@@ -1369,7 +1404,8 @@ function stepDragFollow() {
   dragging.y += dY * follow;
   dragging.peel += dPeel * (dragging._touch ? 0.30 : 0.23);
   dragging.lift += dLift * 0.20;
-  rebuild(dragging);
+  if (dragging.detached) updateFlatPose(dragging);
+  else rebuild(dragging);
 }
 /* ============ INTRO REVEAL（森林揭幕） ============ */
 // 全部纹理就绪（manager 空闲）且贴纸已建好后触发一次：
