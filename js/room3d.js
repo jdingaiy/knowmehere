@@ -95,9 +95,9 @@ const HINT_KEY = 'sk_hint_done_v1';
 let hintTimer = null, hintActive = null, hintStart = 0;
 const DRAG_LIFT = 0.22;    // detached height after a deliberate peel
 const REST_LIFT = 0.025;   // depth-safe resting gap above the pole surface
-const PEEL_START = 0.14;   // small edge curl on pointer-down
-const PEEL_DISTANCE = 118; // pointer pixels needed for a full peel
-const PEEL_DETACH = 0.78;  // curl becomes a free, flat sticker after this point
+const PEEL_START = 0.20;   // clearly visible edge curl on pointer-down
+const PEEL_DISTANCE = 150; // longer tactile peel before flat drag takes over
+const PEEL_DETACH = 0.84;  // curl becomes a free, flat sticker after this point
 let container, modalApi, tagEl;
 
 /* ---------- loading manager + reveal (intro animation) state ---------- */
@@ -554,7 +554,7 @@ function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn, peelEntry) 
           : edge === 'right' ? (1 - fx) * sw
           : edge === 'top' ? fy * sh
           : (1 - fy) * sh;
-        const extent = span * (0.055 + 0.40 * peel);
+        const extent = span * (0.085 + 0.44 * peel);
         if (d < extent) {
           const qPeel = extent - d;
           // Keep the fold below 90 degrees. Beyond that point the sampled
@@ -565,7 +565,11 @@ function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn, peelEntry) 
           const aPeel = (qPeel / extent) * maxAngle;
           const radius = extent / maxAngle;
           const tangentShift = qPeel - radius * Math.sin(aPeel);
-          const normalLift = radius * (1 - Math.cos(aPeel));
+          // Emphasise height rather than rotation: the edge reads as peeled
+          // without ever approaching the self-intersection angle.
+          const edgeWeight = qPeel / extent;
+          const normalLift = radius * (1 - Math.cos(aPeel)) * 1.9
+            + edgeWeight * edgeWeight * peel * 0.09;
           if (horizontal) {
             const sign = edge === 'left' ? 1 : -1;
             _surf.pos.x += Math.cos(theta) * tangentShift * sign + _surf.normal.x * normalLift;
@@ -949,8 +953,9 @@ function rebuild(entry) {
   // shadow — almost-touching contact shadow that softens with blur, not by
   // moving away. As lift grows (drag), it drops slightly + softens further.
   if (entry.shMesh) {
-    const yOff  = -0.02 - safeLift * 0.18;
-    const scale = 1.04 + safeLift * 0.10;
+    const peelAmount = clamp(entry.peel || 0, 0, 1);
+    const yOff  = -0.02 - safeLift * 0.18 - peelAmount * 0.035;
+    const scale = 1.04 + safeLift * 0.10 + peelAmount * 0.035;
     // wider margin on shadow so the blur tail can fade past the artwork
     const sg = buildStickerGeometry(
       entry.theta, entry.y + yOff, entry.S * scale, 0.001, entry.aspect, 0.18
@@ -958,8 +963,8 @@ function rebuild(entry) {
     entry.shMesh.geometry.dispose();
     entry.shMesh.geometry = sg;
     const u = entry.shMesh.material.uniforms;
-    u.strength.value = 0.35 - safeLift * 0.18;
-    u.blurPx.value   = 10.0 + safeLift * 14.0; // blurrier when lifted
+    u.strength.value = 0.35 - safeLift * 0.18 - peelAmount * 0.10;
+    u.blurPx.value   = 10.0 + safeLift * 14.0 + peelAmount * 9.0;
   }
 }
 
@@ -1018,6 +1023,8 @@ function detachSticker(entry) {
     overwrite: 'auto'
   });
   if (peelAudioState) emitPeelGrain(peelAudioState.peak, 1, true);
+  // The tear is complete. Flat dragging and reattachment must be silent.
+  peelAudioState = null;
 }
 // Called every frame for the currently dragged flat sticker.
 function syncFlatToView() {
@@ -1092,7 +1099,8 @@ function playPeelAudio(e, progress) {
   peelAudioState.at = now;
 }
 function finishPeelAudio(detached) {
-  if (detached && peelAudioState) emitPeelGrain(peelAudioState.peak, 1, true);
+  // Cancelling or reattaching is silent; grains only play while material is
+  // actively being peeled from the pole.
   peelAudioState = null;
 }
 
@@ -1238,8 +1246,10 @@ function onMove(e) {
   const pointerTravel = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
   if (pointerTravel > 6) dragMoved = true;
   dragging._targetPeel = clamp(PEEL_START + pointerTravel / PEEL_DISTANCE, PEEL_START, 1);
-  playPeelAudio(e, dragging._targetPeel);
-  if (!dragging.detached && dragging._targetPeel >= PEEL_DETACH) detachSticker(dragging);
+  if (!dragging.detached) {
+    playPeelAudio(e, dragging._targetPeel);
+    if (dragging._targetPeel >= PEEL_DETACH) detachSticker(dragging);
+  }
   // Keep the camera still and map the pointer directly onto the pole. The
   // original pickup offset prevents the sticker jumping under the cursor.
   setPointer(e);
