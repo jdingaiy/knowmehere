@@ -15,7 +15,7 @@
         href="assets/texture/gravel_embedded_concrete_2k.blend/textures/gravel_embedded_concrete_diff_2k.jpg" />
   <link rel="preload" as="fetch" crossorigin
         href="assets/ip-manifest.json" />
-  <link rel="modulepreload" href="js/room3d.js" />
+  <link rel="modulepreload" href="js/room3d.js?v=20260906b" />
   <link rel="preload" as="script" href="js/stickers-data.js" />
 
 </head>
@@ -567,7 +567,7 @@
 
   <!-- 3D room (module) -->
   <script type="module">
-    import { initRoom, addStickers, applyFilter, resetStickers, pause, resume, playReveal } from './js/room3d.js';
+    import { initRoom, addStickers, applyFilter, resetStickers, pause, resume, playReveal } from './js/room3d.js?v=20260906b';
     const container = document.getElementById('room-canvas');
 
     // ── 开场 loader：水注入动画（~2.5s）+ 问候文字 → 停 1s → 化作白雾 ──
