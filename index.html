@@ -208,9 +208,7 @@
        the transformed panel track so it remains fixed to the viewport. IP
        illustration stickers stay on the pole for free exploration. -->
   <aside class="project-progress" id="project-progress" aria-label="项目进度导航">
-    <div class="project-progress-kicker">PROJECTS</div>
     <div class="project-progress-list" id="project-progress-list"></div>
-    <div class="project-progress-hint">滚轮 / ↑ ↓</div>
   </aside>
   <aside class="project-card" id="project-card" aria-live="polite">
     <div class="project-card-content" id="project-card-content"></div>
@@ -537,9 +535,23 @@
         item.setAttribute('aria-current', active ? 'true' : 'false');
       });
       renderProjectCard(project, next, changed || options.animate);
+      setProjectCardVisible(options.showCard === true);
       if (options.focus !== false && window.__room && window.__room.focusProject) {
         window.__room.focusProject(project.id);
       }
+    }
+
+    function setProjectCardVisible(visible) {
+      projectCard.classList.toggle('is-visible', visible);
+    }
+
+    function stepProjectByWheel(deltaY) {
+      if (!projectItems.length || currentModal || track.classList.contains('show-cv')) return;
+      if (Math.abs(deltaY) < 4) return;
+      const now = performance.now();
+      if (now - navWheelAt < 360) return;
+      navWheelAt = now;
+      selectProject(activeProjectIndex + (deltaY > 0 ? 1 : -1));
     }
 
     if (projectItems.length) {
@@ -557,11 +569,7 @@
       });
       projectNav.addEventListener('wheel', event => {
         event.preventDefault();
-        if (Math.abs(event.deltaY) < 4) return;
-        const now = performance.now();
-        if (now - navWheelAt < 420) return;
-        navWheelAt = now;
-        selectProject(activeProjectIndex + (event.deltaY > 0 ? 1 : -1));
+        stepProjectByWheel(event.deltaY);
       }, { passive: false });
       projectCard.addEventListener('click', event => {
         const link = event.target.closest('.project-card-link');
@@ -581,6 +589,19 @@
           selectProject(activeProjectIndex - 1);
         }
       });
+      // Sticker hover is the source of truth for the contextual card. The
+      // Three.js scene emits these events only after its hover-intent delay,
+      // so passing across the pole never flickers the UI.
+      window.addEventListener('room:stickerfocus', event => {
+        const index = projectItems.findIndex(item => item.id === event.detail?.id);
+        if (index >= 0) selectProject(index, { focus: false, showCard: true });
+        else setProjectCardVisible(false);
+      });
+      window.addEventListener('room:stickerblur', () => setProjectCardVisible(false));
+      // Chrome on macOS exposes a two-finger trackpad swipe as a wheel event.
+      // The room forwards that wheel event here so the same one-project-at-a-
+      // time navigation works whether the pointer is on the rail or canvas.
+      window.addEventListener('room:projectwheel', event => stepProjectByWheel(event.detail?.deltaY || 0));
     }
 
     // ── panel slide ──
@@ -595,6 +616,7 @@
       dlBtn.style.display     = cv ? '' : 'none';
       projectNav.classList.toggle('is-hidden', cv);
       projectCard.classList.toggle('is-hidden', cv);
+      if (cv) setProjectCardVisible(false);
       clearTimeout(pauseTimer);
       if (!cv) window.__room && window.__room.resume();
       gsap.to(track, {

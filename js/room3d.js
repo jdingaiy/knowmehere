@@ -1137,10 +1137,13 @@ function bindEvents() {
     hideTag();
     cancelHoverFocus();
   });
-  // mouse wheel / trackpad vertical scroll -> pan view up/down
+  // Mouse-wheel and macOS two-finger trackpad gestures both arrive as wheel
+  // events. Let the page's project rail consume them one project at a time.
   el.addEventListener('wheel', (e) => {
     e.preventDefault();
-    viewY = clamp(viewY - e.deltaY * 0.01, -CFG.viewYRange, CFG.viewYRange);
+    window.dispatchEvent(new CustomEvent('room:projectwheel', {
+      detail: { deltaY: e.deltaY }
+    }));
   }, { passive: false });
 }
 function setPointer(e) {
@@ -1469,6 +1472,9 @@ function scheduleHoverFocus(entry, event) {
     focusedSticker = entry;
     focusedPointer = pointerAtIntent;
     tagEl.classList.add('anchored');
+    window.dispatchEvent(new CustomEvent('room:stickerfocus', {
+      detail: { id: entry.data.id, kind: entry.data.kind || 'project' }
+    }));
     const safe = safeViewYRange();
     tweenCameraAngle(entry.theta, 480);
     if (Math.abs(entry.y) <= safe) tweenViewY(entry.y, 480);
@@ -1480,9 +1486,15 @@ function cancelHoverFocus() {
   hoverFocusTarget = null;
 }
 function clearFocusedSticker() {
+  const previous = focusedSticker;
   focusedSticker = null;
   focusedPointer = null;
   if (tagEl) tagEl.classList.remove('anchored');
+  if (previous) {
+    window.dispatchEvent(new CustomEvent('room:stickerblur', {
+      detail: { id: previous.data.id, kind: previous.data.kind || 'project' }
+    }));
+  }
 }
 const _tagSurface = { pos: new THREE.Vector3(), normal: new THREE.Vector3() };
 const _tagProjected = new THREE.Vector3();
