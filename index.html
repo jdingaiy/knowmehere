@@ -485,7 +485,10 @@
       studio: 'RESEARCH · 交互研究',
     };
     let activeProjectIndex = 0;
-    let navWheelAt = 0;
+    let wheelTargetIndex = null;
+    let wheelDelta = 0;
+    let wheelDirection = 0;
+    let wheelCommitTimer = null;
 
     function projectCardMarkup(project, index) {
       const sequence = String(index + 1).padStart(2, '0');
@@ -498,10 +501,7 @@
         </div>
         <h1 class="project-card-title">${project.name}</h1>
         <p class="project-card-period">${project.period || '—'}</p>
-        <p class="project-card-description">${project.description || ''}</p>
-        <button class="project-card-link" type="button" data-project-id="${project.id}">
-          查看项目 <span aria-hidden="true">↗</span>
-        </button>`;
+        <p class="project-card-description">${project.description || ''}</p>`;
     }
 
     function renderProjectCard(project, index, animate) {
@@ -509,16 +509,16 @@
       gsap.killTweensOf(projectCardContent);
       if (!animate || reduceMotion()) {
         update();
-        gsap.set(projectCardContent, { autoAlpha: 1, y: 0 });
+        gsap.set(projectCardContent, { autoAlpha: 1, filter: 'blur(0px)' });
         return;
       }
       gsap.to(projectCardContent, {
-        autoAlpha: 0, y: -6, duration: 0.13, ease: 'power1.in',
+        autoAlpha: 0, filter: 'blur(6px)', duration: 0.13, ease: 'power1.in',
         onComplete: () => {
           update();
           gsap.fromTo(projectCardContent,
-            { autoAlpha: 0, y: 8 },
-            { autoAlpha: 1, y: 0, duration: 0.32, ease: 'power3.out', overwrite: 'auto' });
+            { autoAlpha: 0, filter: 'blur(6px)' },
+            { autoAlpha: 1, filter: 'blur(0px)', duration: 0.3, ease: 'power3.out', overwrite: 'auto' });
         },
       });
     }
@@ -548,10 +548,28 @@
     function stepProjectByWheel(deltaY) {
       if (!projectItems.length || currentModal || track.classList.contains('show-cv')) return;
       if (Math.abs(deltaY) < 4) return;
-      const now = performance.now();
-      if (now - navWheelAt < 360) return;
-      navWheelAt = now;
-      selectProject(activeProjectIndex + (deltaY > 0 ? 1 : -1));
+      // Accumulate a short burst before applying it. This lets a fast swipe
+      // move 01 → 03 in one intentional transition instead of visibly
+      // visiting 02 for a frame on the way.
+      const direction = Math.sign(deltaY);
+      if (wheelDirection && direction !== wheelDirection) wheelDelta = 0;
+      wheelDirection = direction;
+      wheelTargetIndex ??= activeProjectIndex;
+      wheelDelta += deltaY;
+      const unit = 80;
+      const steps = Math.min(3, Math.floor(Math.abs(wheelDelta) / unit));
+      if (steps) {
+        wheelTargetIndex = (wheelTargetIndex + direction * steps + projectItems.length) % projectItems.length;
+        wheelDelta -= direction * steps * unit;
+      }
+      clearTimeout(wheelCommitTimer);
+      wheelCommitTimer = setTimeout(() => {
+        const target = wheelTargetIndex;
+        wheelTargetIndex = null;
+        wheelDelta = 0;
+        wheelDirection = 0;
+        if (target != null && target !== activeProjectIndex) selectProject(target, { animate: false });
+      }, 130);
     }
 
     if (projectItems.length) {
@@ -571,12 +589,6 @@
         event.preventDefault();
         stepProjectByWheel(event.deltaY);
       }, { passive: false });
-      projectCard.addEventListener('click', event => {
-        const link = event.target.closest('.project-card-link');
-        if (!link) return;
-        const project = projectItems.find(item => item.id === link.dataset.projectId);
-        if (project) openModal(project);
-      });
       document.addEventListener('keydown', event => {
         const target = event.target;
         const isTyping = target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));

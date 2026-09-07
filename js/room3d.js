@@ -1136,6 +1136,7 @@ function bindEvents() {
   el.addEventListener('pointerleave', () => {
     hideTag();
     cancelHoverFocus();
+    clearFocusedSticker();
   });
   // Mouse-wheel and macOS two-finger trackpad gestures both arrive as wheel
   // events. Let the page's project rail consume them one project at a time.
