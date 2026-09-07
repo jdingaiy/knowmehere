@@ -1503,13 +1503,22 @@ function showTag(text, x, y) {
   tagEl.classList.add('visible');
 }
 function hideTag() { if (tagEl) tagEl.classList.remove('visible'); }
-/* ============ FILTER / RESET ============ */
-export function applyFilter(cat) {
-  stickers.forEach(s => { s.mesh.visible = (cat === 'all' || s.data.category === cat); });
-}
-export function resetStickers() {
-  stickers.forEach(s => { try { localStorage.removeItem('skP_' + s.data.id); } catch (e) {} });
-  location.reload();
+
+/* ============ PROJECT NAVIGATION ============ */
+// This only moves the camera. Sticker placement, peeling, reflection, sound
+// and empty-space drag inertia all remain independent from navigation focus.
+export function focusProject(id) {
+  if (dragging || rotating) return false;
+  const target = stickers.find(s => s.data.id === id && s.data.kind !== 'illustration-ip');
+  if (!target) return false;
+  stopHint();
+  cancelHoverFocus();
+  clearFocusedSticker();
+  hideTag();
+  const safe = safeViewYRange();
+  tweenCameraAngle(target.theta, 720);
+  tweenViewY(clamp(target.y, -safe, safe), 720);
+  return true;
 }
 
 /* ============ LOOP ============ */
