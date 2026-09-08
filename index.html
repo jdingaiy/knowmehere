@@ -485,22 +485,28 @@
     let wheelDirection = 0;
     let wheelCommitTimer = null;
     let projectCardHideTimer = null;
+    const ORGANIZATION_TAGS = {
+      Tars: 'assets/tags/tars.svg',
+      IKEA: 'assets/tags/ikea.svg',
+      '个人': 'assets/tags/personal.svg',
+      '小红书': 'assets/tags/xiaohongshu.svg',
+    };
 
     function projectCardMarkup(project) {
       const period = String(project.period || '—').replace(/\b20(\d{2})/g, '$1');
-      const organization = project.organization
-        ? `<span class="project-card-organization">${project.organization}</span>`
+      const type = project.subtitle
+        ? `<span class="project-card-type">${project.subtitle}</span>`
         : '';
-      const subtitle = project.subtitle
-        ? `<p class="project-card-subtitle">${project.subtitle}</p>`
+      const organizationTag = ORGANIZATION_TAGS[project.organization]
+        ? `<img class="project-card-organization-tag" src="${ORGANIZATION_TAGS[project.organization]}" alt="${project.organization}" />`
         : '';
       return `
         <div class="project-card-topline">
           <span class="project-card-period">${period}</span>
-          ${organization}
+          ${type}
         </div>
+        ${organizationTag}
         <h1 class="project-card-title">${project.name}</h1>
-        ${subtitle}
         <p class="project-card-description">${project.description || ''}</p>`;
     }
 
