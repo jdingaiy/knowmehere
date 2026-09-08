@@ -288,11 +288,7 @@
 
 @media (max-width: 600px) {
   .project-progress {
-    top: auto;
-    bottom: 18px;
-    left: 18px;
-    width: auto;
-    transform: none;
+    display: none;
   }
   .project-progress.is-hidden { transform: translateY(10px); }
   .project-progress-list { flex-direction: row; gap: 7px; }
@@ -317,8 +313,8 @@
   .project-card-organization-tag {
     top: -45px;
     left: -28px;
-    max-width: 82px;
-    max-height: 58px;
+    max-width: 41px;
+    max-height: 29px;
   }
   .project-card-title { margin-top: 12px; font-size: 18px; }
 }

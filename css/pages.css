@@ -7,6 +7,11 @@ body.cv-page {
   background: var(--white);
 }
 
+.app-panel-cv,
+.app-panel-cv .cv-wrap {
+  font-family: Georgia, 'Songti SC', 'Noto Serif SC', serif;
+}
+
 .cv-wrap {
   max-width: 640px;
   margin: 0 auto;
