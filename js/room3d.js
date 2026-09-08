@@ -1344,6 +1344,14 @@ function onUp(e = {}, cancelled = false) {
     }
     // Double-tap on empty space -> spin and pan to the densest sticker cluster.
     if (wasTap) {
+      if (release.touch) {
+        const direction = downPos.y < window.innerHeight * 0.5 ? -1 : 1;
+        window.dispatchEvent(new CustomEvent('room:projectwheel', {
+          detail: { deltaY: direction * 80 }
+        }));
+        scheduleHint(3000);
+        return;
+      }
       const now = performance.now();
       if (now - lastTapAt < 350) {
         lastTapAt = 0;
