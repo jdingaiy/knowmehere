@@ -64,6 +64,7 @@
   height: 1px;
   flex: 0 0 auto;
   background: rgba(26, 24, 20, 0.32);
+  transform-origin: left center;
   transition: width 0.34s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s ease;
 }
 .project-progress-name {
@@ -90,23 +91,6 @@
   transform: translateX(0);
 }
 .project-progress-item.is-near-hover .project-progress-mark { width: 21px; }
-.project-progress-curve {
-  position: absolute;
-  z-index: 0;
-  top: -20px;
-  left: -8px;
-  width: 74px;
-  height: calc(100% + 40px);
-  overflow: visible;
-  pointer-events: none;
-}
-.project-progress-curve path {
-  fill: none;
-  stroke: rgba(26, 24, 20, 0.64);
-  stroke-linecap: round;
-  stroke-width: 1.5;
-  transition: d 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-}
 
 /* The card stays deliberately translucent so the cylinder keeps visual
    ownership of the page. There is no hard border or heavy elevation. */
@@ -117,9 +101,9 @@
   bottom: 24px;
   width: min(340px, calc(100vw - 96px));
   padding: 19px 20px 18px;
-  background: rgba(255,255,255,0.52);
-  border: 1px solid rgba(255,255,255,0.38);
-  border-radius: 12px;
+  background: rgba(255,255,255,0.4);
+  border: 0;
+  border-radius: 20px;
   backdrop-filter: blur(18px) saturate(130%);
   -webkit-backdrop-filter: blur(18px) saturate(130%);
   opacity: 0;
@@ -131,12 +115,12 @@
 .project-card::before {
   position: absolute;
   z-index: 0;
-  inset: -10px;
-  border-radius: 20px;
-  background: rgba(255,255,255,0.34);
+  inset: -20px;
+  border-radius: 38px;
+  background: rgba(255,255,255,0.42);
   content: '';
-  filter: blur(13px);
-  opacity: 0.8;
+  filter: blur(24px);
+  opacity: 0.72;
 }
 .project-card-content { position: relative; z-index: 1; }
 .project-card.is-visible { opacity: 1; filter: blur(0); }
@@ -148,7 +132,6 @@
   gap: 12px;
   min-height: 14px;
 }
-.project-card-type,
 .project-card-period {
   color: var(--ink);
   font-family: var(--font-d);
@@ -157,7 +140,6 @@
   letter-spacing: 0.08em;
   line-height: 1.3;
 }
-.project-card-type { overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .project-card-title {
   margin: 16px 0 11px;
   color: var(--ink);
@@ -193,30 +175,10 @@
 }
 
 
-/* Hover tag — follows the cursor when hovering a sticker */
+/* Hover tags are deliberately hidden: the project card carries this context. */
 .sticker-tag {
-  position: fixed;
-  top: 0; left: 0;
-  pointer-events: none;
-  z-index: 1000;
-  padding: 6px 12px;
-  border-radius: 100px;
-  background: rgba(255,255,255,0.5);
-  border: none;
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  box-shadow: 0 4px 18px rgba(60,55,50,0.12);
-  font-family: var(--font);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--ink);
-  white-space: nowrap;
-  letter-spacing: -0.1px;
-  opacity: 0;
-  transform: translate(-50%, -100%) translate(0, -14px);
-  transition: opacity 0.12s ease;
+  display: none;
 }
-.sticker-tag.visible { opacity: 1; }
 /* ── Sliding two-panel track ── */
 .app-track {
   position: fixed; top: 0; left: 0;
@@ -289,8 +251,7 @@
   .project-progress,
   .project-card,
   .project-progress-mark,
-  .project-progress-name,
-  .project-progress-curve path { transition: none; }
+  .project-progress-name { transition: none; }
 }
 
 @media (max-width: 600px) {
@@ -307,7 +268,6 @@
   .project-progress-name { display: none; }
   .project-progress-mark { width: 14px; }
   .project-progress-item.is-active .project-progress-mark { width: 0; }
-  .project-progress-curve { display: none; }
   .project-card {
     top: auto;
     right: 16px;
