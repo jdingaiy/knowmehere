@@ -27,7 +27,7 @@
   z-index: 120;
   left: 24px;
   top: 50%;
-  width: min(250px, 26vw);
+  width: 150px;
   transform: translateY(-50%);
   color: var(--ink);
   transition: opacity 0.24s ease, transform 0.28s ease;
@@ -300,5 +300,4 @@
     height: 330px;
   }
   .project-card-title { margin-top: 12px; font-size: 18px; }
-  .project-card-description { display: none; }
 }
