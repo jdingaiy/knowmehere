@@ -130,10 +130,10 @@
   height: 430px;
   border-radius: 50%;
   background: radial-gradient(ellipse at 47% 58%,
-    rgba(255,255,255,0.9) 0%,
-    rgba(255,255,255,0.64) 24%,
-    rgba(255,255,255,0.34) 48%,
-    rgba(255,255,255,0.1) 65%,
+    rgba(255,255,255,0.98) 0%,
+    rgba(255,255,255,0.78) 24%,
+    rgba(255,255,255,0.42) 48%,
+    rgba(255,255,255,0.14) 65%,
     rgba(255,255,255,0) 78%);
   content: '';
   filter: blur(15px);
