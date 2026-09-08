@@ -133,13 +133,8 @@ body.cv-page {
 }
 .cv-contact-row:first-child { border-top: 1px solid var(--rule); }
 .cv-contact-row::before {
-  content:''; position:absolute; inset:0;
-  background: var(--off); border-radius: 6px;
-  transform: translateX(-100%);
-  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
-  z-index: 0;
+  display: none;
 }
-.cv-contact-row:hover::before { transform: translateX(0); }
 .cv-contact-row > * { position: relative; z-index: 1; }
 
 .cv-contact-left { display:flex; align-items:center; gap:12px; }
