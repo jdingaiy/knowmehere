@@ -208,6 +208,9 @@
        the transformed panel track so it remains fixed to the viewport. IP
        illustration stickers stay on the pole for free exploration. -->
   <aside class="project-progress" id="project-progress" aria-label="项目进度导航">
+    <svg class="project-progress-curve" id="project-progress-curve" aria-hidden="true" preserveAspectRatio="none">
+      <path id="project-progress-curve-path"></path>
+    </svg>
     <div class="project-progress-list" id="project-progress-list"></div>
   </aside>
   <aside class="project-card" id="project-card" aria-live="polite">
@@ -475,6 +478,8 @@
     // deliberately excluded so illustrations remain a free-explore layer.
     const projectNav = document.getElementById('project-progress');
     const projectList = document.getElementById('project-progress-list');
+    const projectCurve = document.getElementById('project-progress-curve');
+    const projectCurvePath = document.getElementById('project-progress-curve-path');
     const projectCard = document.getElementById('project-card');
     const projectCardContent = document.getElementById('project-card-content');
     const projectItems = (window.STICKERS_DATA || [])
@@ -490,22 +495,21 @@
     let wheelDirection = 0;
     let wheelCommitTimer = null;
 
-    function projectCardMarkup(project, index) {
-      const sequence = String(index + 1).padStart(2, '0');
-      const total = String(projectItems.length).padStart(2, '0');
-      const type = PROJECT_TYPES[project.category] || (project.tags || [])[0] || 'PROJECT';
+    function projectCardMarkup(project) {
+      const type = project.kind === 'illustration-ip'
+        ? 'ILLUSTRATION · IP 贴纸'
+        : PROJECT_TYPES[project.category] || (project.tags || [])[0] || 'PROJECT';
       return `
         <div class="project-card-topline">
-          <span class="project-card-index">${sequence}<i>/</i>${total}</span>
+          <span class="project-card-period">${project.period || '—'}</span>
           <span class="project-card-type">${type}</span>
         </div>
         <h1 class="project-card-title">${project.name}</h1>
-        <p class="project-card-period">${project.period || '—'}</p>
         <p class="project-card-description">${project.description || ''}</p>`;
     }
 
-    function renderProjectCard(project, index, animate) {
-      const update = () => { projectCardContent.innerHTML = projectCardMarkup(project, index); };
+    function renderProjectCard(project, animate) {
+      const update = () => { projectCardContent.innerHTML = projectCardMarkup(project); };
       gsap.killTweensOf(projectCardContent);
       if (!animate || reduceMotion()) {
         update();
@@ -534,7 +538,7 @@
         item.classList.toggle('is-active', active);
         item.setAttribute('aria-current', active ? 'true' : 'false');
       });
-      renderProjectCard(project, next, changed || options.animate);
+      renderProjectCard(project, changed || options.animate);
       setProjectCardVisible(options.showCard === true);
       if (options.focus !== false && window.__room && window.__room.focusProject) {
         window.__room.focusProject(project.id);
@@ -543,6 +547,52 @@
 
     function setProjectCardVisible(visible) {
       projectCard.classList.toggle('is-visible', visible);
+    }
+
+    function updateProjectCurve(index = null) {
+      if (!projectCurve || !projectCurvePath) return;
+      const listRect = projectList.getBoundingClientRect();
+      const items = [...projectList.querySelectorAll('.project-progress-item')];
+      const height = Math.max(1, Math.round(listRect.height + 40));
+      const offset = 20;
+      projectCurve.setAttribute('viewBox', `0 0 74 ${height}`);
+      let y = height / 2;
+      let bulgeX = 8;
+      if (index != null && items[index]) {
+        const itemRect = items[index].getBoundingClientRect();
+        y = Math.max(22, Math.min(height - 22, itemRect.top - listRect.top + itemRect.height / 2 + offset));
+        bulgeX = 49;
+      }
+      const spread = 31;
+      const path = [
+        'M 8 0',
+        `L 8 ${y - spread}`,
+        `C 8 ${y - 12}, ${bulgeX} ${y - 15}, ${bulgeX} ${y}`,
+        `C ${bulgeX} ${y + 15}, 8 ${y + 12}, 8 ${y + spread}`,
+        `L 8 ${height}`,
+      ].join(' ');
+      if (reduceMotion() || !projectCurvePath.getAttribute('d')) projectCurvePath.setAttribute('d', path);
+      else gsap.to(projectCurvePath, { attr: { d: path }, duration: 0.32, ease: 'power3.out', overwrite: 'auto' });
+    }
+
+    function setProjectNavHover(index = null) {
+      const items = [...projectList.querySelectorAll('.project-progress-item')];
+      items.forEach((item, itemIndex) => {
+        const distance = index == null ? Infinity : Math.abs(itemIndex - index);
+        item.classList.toggle('is-hovered', itemIndex === index);
+        item.classList.toggle('is-near-hover', distance === 1);
+        if (!reduceMotion()) {
+          gsap.to(item, {
+            x: itemIndex === index ? 7 : 0,
+            scale: itemIndex === index ? 1.06 : distance === 1 ? 1.025 : 1,
+            duration: 0.26,
+            ease: 'power3.out',
+            overwrite: 'auto',
+            transformOrigin: 'left center',
+          });
+        }
+      });
+      updateProjectCurve(index);
     }
 
     function stepProjectByWheel(deltaY) {
@@ -580,10 +630,22 @@
           <span class="project-progress-mark" aria-hidden="true"></span>
           <span class="project-progress-name">${project.name}</span>
         </button>`).join('');
-      renderProjectCard(projectItems[0], 0, false);
+      renderProjectCard(projectItems[0], false);
+      updateProjectCurve();
+      window.addEventListener('resize', () => updateProjectCurve());
       projectList.addEventListener('click', event => {
         const item = event.target.closest('.project-progress-item');
         if (item) selectProject(Number(item.dataset.projectIndex));
+      });
+      projectList.querySelectorAll('.project-progress-item').forEach((item, index) => {
+        item.addEventListener('pointerenter', event => {
+          if (event.pointerType !== 'mouse') return;
+          setProjectNavHover(index);
+        });
+        item.addEventListener('pointerleave', event => {
+          if (event.pointerType !== 'mouse') return;
+          setProjectNavHover();
+        });
       });
       projectNav.addEventListener('wheel', event => {
         event.preventDefault();
@@ -607,7 +669,10 @@
       window.addEventListener('room:stickerfocus', event => {
         const index = projectItems.findIndex(item => item.id === event.detail?.id);
         if (index >= 0) selectProject(index, { focus: false, showCard: true });
-        else setProjectCardVisible(false);
+        else if (event.detail?.sticker?.kind === 'illustration-ip') {
+          renderProjectCard(event.detail.sticker, true);
+          setProjectCardVisible(true);
+        } else setProjectCardVisible(false);
       });
       window.addEventListener('room:stickerblur', () => setProjectCardVisible(false));
       // Chrome on macOS exposes a two-finger trackpad swipe as a wheel event.
@@ -750,8 +815,9 @@
               ipName: ip.name,             // which IP family this belongs to
               name: label,                 // shown in the hover tag
               sticker: encodeURI(pool[i]),
-              tags: [], metrics: [], description: '',
-              role: '', period: '', heroEmoji: '✨',
+              tags: [], metrics: [],
+              description: ip.description || '独立创作的角色插画与贴纸探索。',
+              role: '', period: ip.period || '—', heroEmoji: '✨',
               demoType: null, demoUrl: null,
               size: 'tiny',
               ix: Math.random(), iy: Math.random(), rot: 0,

@@ -1474,7 +1474,7 @@ function scheduleHoverFocus(entry, event) {
     focusedPointer = pointerAtIntent;
     tagEl.classList.add('anchored');
     window.dispatchEvent(new CustomEvent('room:stickerfocus', {
-      detail: { id: entry.data.id, kind: entry.data.kind || 'project' }
+      detail: { id: entry.data.id, kind: entry.data.kind || 'project', sticker: entry.data }
     }));
     const safe = safeViewYRange();
     tweenCameraAngle(entry.theta, 480);
