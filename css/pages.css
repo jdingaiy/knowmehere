@@ -9,7 +9,7 @@ body.cv-page {
 
 .app-panel-cv,
 .app-panel-cv .cv-wrap {
-  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif !important;
+  font-family: 'Songti SC', STSong, SimSun, Georgia, 'Noto Serif SC', serif !important;
 }
 
 .cv-wrap {
@@ -22,7 +22,7 @@ body.cv-page {
 .cv-head { margin-bottom: 52px; padding-bottom: 40px; border-bottom: 1px solid var(--rule); }
 
 .cv-name {
-  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif !important;
+  font-family: 'Songti SC', STSong, SimSun, Georgia, 'Noto Serif SC', serif !important;
   font-size: 38px; font-weight: 700;
   letter-spacing: -1.5px; line-height: 1;
   color: var(--ink); margin-bottom: 6px;
@@ -75,7 +75,7 @@ body.cv-page {
   color: var(--accent); margin-bottom: 3px;
 }
 .cv-role-title {
-  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif !important;
+  font-family: 'Songti SC', STSong, SimSun, Georgia, 'Noto Serif SC', serif !important;
   font-size: 15.5px; font-weight: 600;
   color: var(--ink); margin-bottom: 10px;
 }
@@ -113,7 +113,7 @@ body.cv-page {
   border-top: 1px solid var(--rule);
 }
 .cv-contact-greeting {
-  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif !important;
+  font-family: 'Songti SC', STSong, SimSun, Georgia, 'Noto Serif SC', serif !important;
   font-size: 26px; font-weight: 700;
   letter-spacing: -0.8px;
   color: var(--ink); margin-bottom: 10px;
@@ -126,7 +126,7 @@ body.cv-page {
 .cv-contact-rows { display:flex; flex-direction:column; }
 .cv-contact-row {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 32px 16px 0;
+  padding: 16px 48px 16px 0;
   border-bottom: 1px solid var(--rule);
   text-decoration: none; cursor: pointer;
   position: relative; overflow: visible;
@@ -147,4 +147,4 @@ body.cv-page {
 .cv-contact-lbl { font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--ink-3); margin-bottom:2px; }
 .cv-contact-val { font-size:14px; font-weight:500; color:var(--ink); }
 .cv-contact-arrow { font-size:13px; color:var(--ink-3); transition:transform 0.2s ease; }
-.cv-contact-row:hover .cv-contact-arrow { transform:translateX(5px); color:var(--ink); }
+.cv-contact-row:hover .cv-contact-arrow { transform:none; color:var(--ink); }
