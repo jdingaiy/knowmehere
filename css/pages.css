@@ -9,7 +9,7 @@ body.cv-page {
 
 .app-panel-cv,
 .app-panel-cv .cv-wrap {
-  font-family: Georgia, 'Songti SC', 'Noto Serif SC', serif;
+  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif !important;
 }
 
 .cv-wrap {
@@ -22,7 +22,7 @@ body.cv-page {
 .cv-head { margin-bottom: 52px; padding-bottom: 40px; border-bottom: 1px solid var(--rule); }
 
 .cv-name {
-  font-family: Georgia, 'Songti SC', 'Noto Serif SC', serif;
+  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif !important;
   font-size: 38px; font-weight: 700;
   letter-spacing: -1.5px; line-height: 1;
   color: var(--ink); margin-bottom: 6px;
@@ -75,7 +75,7 @@ body.cv-page {
   color: var(--accent); margin-bottom: 3px;
 }
 .cv-role-title {
-  font-family: Georgia, 'Songti SC', 'Noto Serif SC', serif;
+  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif !important;
   font-size: 15.5px; font-weight: 600;
   color: var(--ink); margin-bottom: 10px;
 }
@@ -113,7 +113,7 @@ body.cv-page {
   border-top: 1px solid var(--rule);
 }
 .cv-contact-greeting {
-  font-family: Georgia, 'Songti SC', 'Noto Serif SC', serif;
+  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif !important;
   font-size: 26px; font-weight: 700;
   letter-spacing: -0.8px;
   color: var(--ink); margin-bottom: 10px;
@@ -126,10 +126,10 @@ body.cv-page {
 .cv-contact-rows { display:flex; flex-direction:column; }
 .cv-contact-row {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 18px 16px 0;
+  padding: 16px 32px 16px 0;
   border-bottom: 1px solid var(--rule);
   text-decoration: none; cursor: pointer;
-  position: relative; overflow: hidden;
+  position: relative; overflow: visible;
 }
 .cv-contact-row:first-child { border-top: 1px solid var(--rule); }
 .cv-contact-row::before {
