@@ -437,7 +437,9 @@ body.modal-open .ui-topbar,
 body.modal-open .ui-pill,
 body.modal-open .ui-dropdown,
 body.modal-open .drag-hint,
-body.modal-open .sticker-tag {
+body.modal-open .sticker-tag,
+body.modal-open .project-progress,
+body.modal-open .project-card {
   opacity: 0 !important;
   pointer-events: none !important;
   transition: opacity 0.25s ease;

@@ -19,6 +19,177 @@
 .room-canvas:active { cursor: grabbing; }
 .room-canvas canvas { display: block; }
 
+/* ── Project progress navigation ──
+   This is a visual progress trace rather than a conventional sidebar: the
+   inactive projects deliberately collapse to quiet, short marks. */
+.project-progress {
+  position: fixed;
+  z-index: 120;
+  left: 24px;
+  top: 50%;
+  width: 150px;
+  transform: translateY(-50%);
+  color: var(--ink);
+  transition: opacity 0.24s ease, transform 0.28s ease;
+  user-select: none;
+}
+.project-progress.is-hidden,
+.project-card.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.project-progress.is-hidden { transform: translate(-10px, -50%); }
+.project-progress-list {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+.project-progress-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  min-height: 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+.project-progress-mark {
+  position: absolute;
+  left: 0;
+  top: calc(50% - 0.5px);
+  width: 18px;
+  height: 1px;
+  flex: 0 0 auto;
+  background: rgba(26, 24, 20, 0.56);
+  transform-origin: left center;
+  transition: width 0.34s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s ease;
+}
+.project-progress-name {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  max-width: 0;
+  margin-left: 0;
+  overflow: hidden;
+  opacity: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  transform: translateY(-50%);
+  transition: max-width 0.38s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
+}
+.project-progress-item:hover .project-progress-mark { width: 26px; background: rgba(26,24,20,0.72); }
+.project-progress-item.is-active .project-progress-mark { width: 0; background: transparent; }
+.project-progress-item.is-active .project-progress-name {
+  max-width: 150px;
+  opacity: 1;
+  color: var(--ink);
+  transform: translateY(-50%);
+}
+.project-progress-item.is-hovered .project-progress-name {
+  max-width: 150px;
+  opacity: 1;
+  color: #fff;
+  transform: translateY(-50%);
+}
+.project-progress-item.is-near-hover .project-progress-mark { width: 21px; }
+.project-progress-item.is-hovered .project-progress-mark { width: 0; background: transparent; }
+
+/* A diffuse information field rather than a bounded card. */
+.project-card {
+  position: fixed;
+  z-index: 120;
+  right: 24px;
+  bottom: 24px;
+  width: min(340px, calc(100vw - 96px));
+  padding: 34px 34px 30px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  opacity: 0;
+  pointer-events: none;
+  filter: blur(12px);
+  isolation: isolate;
+  transition: opacity 0.24s ease, filter 0.32s ease;
+}
+.project-card::before {
+  position: absolute;
+  z-index: 0;
+  right: -96px;
+  bottom: -116px;
+  width: 520px;
+  height: 430px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 47% 58%,
+    rgba(255,255,255,0.9) 0%,
+    rgba(255,255,255,0.64) 24%,
+    rgba(255,255,255,0.34) 48%,
+    rgba(255,255,255,0.1) 65%,
+    rgba(255,255,255,0) 78%);
+  content: '';
+  filter: blur(15px);
+  pointer-events: none;
+}
+.project-card-content { position: relative; z-index: 1; }
+.project-card.is-visible { opacity: 1; filter: blur(0); }
+.project-card.is-hidden { opacity: 0; filter: blur(12px); }
+.project-card-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 14px;
+}
+.project-card-period,
+.project-card-type {
+  color: var(--ink);
+  font-family: var(--font-d);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+}
+.project-card-type { text-align: right; }
+.project-card-organization-tag {
+  position: absolute;
+  z-index: 2;
+  top: -54px;
+  left: -38px;
+  display: block;
+  max-width: 102px;
+  max-height: 70px;
+  object-fit: contain;
+  pointer-events: none;
+  transform: rotate(15deg);
+  transform-origin: center;
+}
+.project-card-title {
+  margin: 16px 0 5px;
+  color: var(--ink);
+  font-size: clamp(19px, 2vw, 25px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1.16;
+}
+.project-card-description {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.7;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
 /* Drag hint */
 .drag-hint {
   position: absolute; right: 22px; bottom: 90px;
@@ -36,30 +207,10 @@
 }
 
 
-/* Hover tag — follows the cursor when hovering a sticker */
+/* Hover tags are deliberately hidden: the project card carries this context. */
 .sticker-tag {
-  position: fixed;
-  top: 0; left: 0;
-  pointer-events: none;
-  z-index: 1000;
-  padding: 6px 12px;
-  border-radius: 100px;
-  background: rgba(255,255,255,0.5);
-  border: none;
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  box-shadow: 0 4px 18px rgba(60,55,50,0.12);
-  font-family: var(--font);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--ink);
-  white-space: nowrap;
-  letter-spacing: -0.1px;
-  opacity: 0;
-  transform: translate(-50%, -100%) translate(0, -14px);
-  transition: opacity 0.12s ease;
+  display: none;
 }
-.sticker-tag.visible { opacity: 1; }
 /* ── Sliding two-panel track ── */
 .app-track {
   position: fixed; top: 0; left: 0;
@@ -129,4 +280,45 @@
 
 @media (prefers-reduced-motion: reduce) {
   .drag-hint { animation: none; }
+  .project-progress,
+  .project-card,
+  .project-progress-mark,
+  .project-progress-name { transition: none; }
+}
+
+@media (max-width: 600px) {
+  .project-progress {
+    top: auto;
+    bottom: 18px;
+    left: 18px;
+    width: auto;
+    transform: none;
+  }
+  .project-progress.is-hidden { transform: translateY(10px); }
+  .project-progress-list { flex-direction: row; gap: 7px; }
+  .project-progress-item { width: auto; min-height: 20px; }
+  .project-progress-name { display: none; }
+  .project-progress-mark { position: static; width: 14px; }
+  .project-progress-item.is-active .project-progress-mark { width: 0; }
+  .project-card {
+    top: auto;
+    right: 16px;
+    bottom: 54px;
+    width: min(280px, calc(100vw - 88px));
+    padding: 26px 24px 22px;
+    transform: none;
+  }
+  .project-card::before {
+    right: -82px;
+    bottom: -90px;
+    width: 400px;
+    height: 330px;
+  }
+  .project-card-organization-tag {
+    top: -45px;
+    left: -28px;
+    max-width: 82px;
+    max-height: 58px;
+  }
+  .project-card-title { margin-top: 12px; font-size: 18px; }
 }

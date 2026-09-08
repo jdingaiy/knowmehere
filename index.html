@@ -15,7 +15,7 @@
         href="assets/texture/gravel_embedded_concrete_2k.blend/textures/gravel_embedded_concrete_diff_2k.jpg" />
   <link rel="preload" as="fetch" crossorigin
         href="assets/ip-manifest.json" />
-  <link rel="modulepreload" href="js/room3d.js?v=20260906h" />
+  <link rel="modulepreload" href="js/room3d.js?v=20260907a" />
   <link rel="preload" as="script" href="js/stickers-data.js" />
 
 </head>
@@ -41,38 +41,11 @@
     </div>
   </nav>
 
-  <!-- ── Bottom pills — filter on works, download on cv ── -->
-  <button class="ui-pill ui-pill-bottom" id="filter-btn" aria-haspopup="listbox" aria-expanded="false">
-    <span id="filter-label">全部</span>
-    <span class="ui-pill-chevron">▾</span>
-  </button>
+  <!-- ── Bottom pill — download on CV ── -->
   <a class="ui-pill ui-pill-bottom" id="dl-btn"
      href="UX-谭加奇-27届-天津大学.pdf" download style="display:none;">
     ↓ 下载简历
   </a>
-
-  <div class="ui-dropdown" id="filter-dropdown" role="listbox">
-    <div class="ui-drop-item active" data-filter="all"       role="option" tabindex="0">
-      <span class="dot" style="background:var(--ink-3)"></span> 全部
-    </div>
-    <div class="ui-drop-divider"></div>
-    <div class="ui-drop-item" data-filter="vibe"      role="option" tabindex="0">
-      <span class="dot" style="background:var(--cat-vibe)"></span> Vibe
-    </div>
-    <div class="ui-drop-item" data-filter="portfolio" role="option" tabindex="0">
-      <span class="dot" style="background:var(--cat-portfolio)"></span> 作品集
-    </div>
-    <div class="ui-drop-item" data-filter="studio"    role="option" tabindex="0">
-      <span class="dot" style="background:var(--cat-studio)"></span> 工作室
-    </div>
-    <div class="ui-drop-item" data-filter="illus"     role="option" tabindex="0">
-      <span class="dot" style="background:var(--cat-illus)"></span> 插画
-    </div>
-    <div class="ui-drop-divider"></div>
-    <div class="ui-drop-item" id="reset-btn" role="option" tabindex="0" style="color:var(--ink-3)">
-      ↺ 重置位置
-    </div>
-  </div>
 
   <!-- ── Sliding two-panel track ── -->
   <div class="app-track" id="app-track">
@@ -231,6 +204,16 @@
 
   </div><!-- /.app-track -->
 
+  <!-- A compact progress trace, not a conventional side menu. It sits outside
+       the transformed panel track so it remains fixed to the viewport. IP
+       illustration stickers stay on the pole for free exploration. -->
+  <aside class="project-progress" id="project-progress" aria-label="项目进度导航">
+    <div class="project-progress-list" id="project-progress-list"></div>
+  </aside>
+  <aside class="project-card" id="project-card" aria-live="polite">
+    <div class="project-card-content" id="project-card-content"></div>
+  </aside>
+
 
   <!-- hover tag follows the cursor over a sticker -->
   <div id="sticker-tag" class="sticker-tag" aria-hidden="true"></div>
@@ -270,9 +253,6 @@
     const reduceMotion = () => motionPreference.reduce;
     window.__motionReduced = reduceMotion;
     const overlay   = document.getElementById('modal-overlay');
-    const filterBtn = document.getElementById('filter-btn');
-    const filterDD  = document.getElementById('filter-dropdown');
-    const filterLbl = document.getElementById('filter-label');
     const dlBtn     = document.getElementById('dl-btn');
     const track     = document.getElementById('app-track');
     const tabWorks  = document.getElementById('tab-works');
@@ -490,6 +470,202 @@
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && currentModal) closeModal(); });
     window.__modalApi = { open: openModal, close: closeModal };
 
+    // ── project progress navigation ──
+    // Only authored projects participate. Synthetic IP sticker entries are
+    // deliberately excluded so illustrations remain a free-explore layer.
+    const projectNav = document.getElementById('project-progress');
+    const projectList = document.getElementById('project-progress-list');
+    const projectCard = document.getElementById('project-card');
+    const projectCardContent = document.getElementById('project-card-content');
+    const projectItems = (window.STICKERS_DATA || [])
+      .filter(project => project.kind !== 'illustration-ip');
+    let activeProjectIndex = 0;
+    let wheelTargetIndex = null;
+    let wheelDelta = 0;
+    let wheelDirection = 0;
+    let wheelCommitTimer = null;
+    let projectCardHideTimer = null;
+    const ORGANIZATION_TAGS = {
+      Tars: 'assets/tags/tars.svg',
+      IKEA: 'assets/tags/ikea.svg',
+      '个人': 'assets/tags/personal.svg',
+      '小红书': 'assets/tags/xiaohongshu.svg',
+    };
+
+    function projectCardMarkup(project) {
+      const period = String(project.period || '—').replace(/\b20(\d{2})/g, '$1');
+      const type = project.subtitle
+        ? `<span class="project-card-type">${project.subtitle}</span>`
+        : '';
+      const organizationTag = ORGANIZATION_TAGS[project.organization]
+        ? `<img class="project-card-organization-tag" src="${ORGANIZATION_TAGS[project.organization]}" alt="${project.organization}" />`
+        : '';
+      return `
+        <div class="project-card-topline">
+          <span class="project-card-period">${period}</span>
+          ${type}
+        </div>
+        ${organizationTag}
+        <h1 class="project-card-title">${project.name}</h1>
+        <p class="project-card-description">${project.description || ''}</p>`;
+    }
+
+    function renderProjectCard(project, animate) {
+      const update = () => { projectCardContent.innerHTML = projectCardMarkup(project); };
+      gsap.killTweensOf(projectCardContent);
+      if (!animate || reduceMotion()) {
+        update();
+        gsap.set(projectCardContent, { autoAlpha: 1, filter: 'blur(0px)' });
+        return;
+      }
+      gsap.to(projectCardContent, {
+        autoAlpha: 0, filter: 'blur(6px)', duration: 0.13, ease: 'power1.in',
+        onComplete: () => {
+          update();
+          gsap.fromTo(projectCardContent,
+            { autoAlpha: 0, filter: 'blur(6px)' },
+            { autoAlpha: 1, filter: 'blur(0px)', duration: 0.3, ease: 'power3.out', overwrite: 'auto' });
+        },
+      });
+    }
+
+    function selectProject(index, options = {}) {
+      if (!projectItems.length) return;
+      const next = (index + projectItems.length) % projectItems.length;
+      const changed = next !== activeProjectIndex;
+      activeProjectIndex = next;
+      const project = projectItems[next];
+      projectList.querySelectorAll('.project-progress-item').forEach((item, itemIndex) => {
+        const active = itemIndex === next;
+        item.classList.toggle('is-active', active);
+        item.setAttribute('aria-current', active ? 'true' : 'false');
+      });
+      renderProjectCard(project, changed || options.animate);
+      setProjectCardVisible(options.showCard === true);
+      if (options.focus !== false && window.__room && window.__room.focusProject) {
+        window.__room.focusProject(project.id);
+      }
+    }
+
+    function setProjectCardVisible(visible) {
+      projectCard.classList.toggle('is-visible', visible);
+    }
+
+    function setProjectNavHover(index = null) {
+      const items = [...projectList.querySelectorAll('.project-progress-item')];
+      items.forEach((item, itemIndex) => {
+        const distance = index == null ? Infinity : Math.abs(itemIndex - index);
+        item.classList.toggle('is-hovered', itemIndex === index);
+        item.classList.toggle('is-near-hover', distance === 1);
+        if (!reduceMotion()) {
+          gsap.to(item.querySelector('.project-progress-mark'), {
+            x: 0,
+            scaleX: distance === 1 ? 1.28 : distance === 2 ? 1.1 : 1,
+            duration: 0.26,
+            ease: 'power3.out',
+            overwrite: 'auto',
+            transformOrigin: 'left center',
+          });
+        }
+      });
+    }
+
+    function showProjectCardBriefly() {
+      clearTimeout(projectCardHideTimer);
+      projectCardHideTimer = setTimeout(() => setProjectCardVisible(false), 1800);
+    }
+
+    function stepProjectByWheel(deltaY) {
+      if (!projectItems.length || currentModal || track.classList.contains('show-cv')) return;
+      if (Math.abs(deltaY) < 4) return;
+      // Accumulate a short burst before applying it. This lets a fast swipe
+      // move 01 → 03 in one intentional transition instead of visibly
+      // visiting 02 for a frame on the way.
+      const direction = Math.sign(deltaY);
+      if (wheelDirection && direction !== wheelDirection) wheelDelta = 0;
+      wheelDirection = direction;
+      wheelTargetIndex ??= activeProjectIndex;
+      wheelDelta += deltaY;
+      const unit = 80;
+      const steps = Math.min(3, Math.floor(Math.abs(wheelDelta) / unit));
+      if (steps) {
+        wheelTargetIndex = (wheelTargetIndex + direction * steps + projectItems.length) % projectItems.length;
+        wheelDelta -= direction * steps * unit;
+      }
+      clearTimeout(wheelCommitTimer);
+      wheelCommitTimer = setTimeout(() => {
+        const target = wheelTargetIndex;
+        wheelTargetIndex = null;
+        wheelDelta = 0;
+        wheelDirection = 0;
+        if (target != null && target !== activeProjectIndex) {
+          selectProject(target, { animate: false, showCard: true });
+          showProjectCardBriefly();
+        }
+      }, 130);
+    }
+
+    if (projectItems.length) {
+      projectList.innerHTML = projectItems.map((project, index) => `
+        <button class="project-progress-item${index === 0 ? ' is-active' : ''}" type="button"
+                data-project-index="${index}" aria-current="${index === 0 ? 'true' : 'false'}"
+                aria-label="切换至：${project.name}">
+          <span class="project-progress-mark" aria-hidden="true"></span>
+          <span class="project-progress-name">${project.name}</span>
+        </button>`).join('');
+      renderProjectCard(projectItems[0], false);
+      projectList.addEventListener('click', event => {
+        const item = event.target.closest('.project-progress-item');
+        if (item) selectProject(Number(item.dataset.projectIndex));
+      });
+      projectList.querySelectorAll('.project-progress-item').forEach((item, index) => {
+        item.addEventListener('pointerenter', event => {
+          if (event.pointerType !== 'mouse') return;
+          setProjectNavHover(index);
+        });
+        item.addEventListener('pointerleave', event => {
+          if (event.pointerType !== 'mouse') return;
+          setProjectNavHover();
+        });
+      });
+      projectNav.addEventListener('wheel', event => {
+        event.preventDefault();
+        stepProjectByWheel(event.deltaY);
+      }, { passive: false });
+      document.addEventListener('keydown', event => {
+        const target = event.target;
+        const isTyping = target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+        if (isTyping || currentModal || track.classList.contains('show-cv')) return;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+          event.preventDefault();
+          selectProject(activeProjectIndex + 1);
+        } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+          event.preventDefault();
+          selectProject(activeProjectIndex - 1);
+        }
+      });
+      // Sticker hover is the source of truth for the contextual card. The
+      // Three.js scene emits these events only after its hover-intent delay,
+      // so passing across the pole never flickers the UI.
+      window.addEventListener('room:stickerfocus', event => {
+        clearTimeout(projectCardHideTimer);
+        const index = projectItems.findIndex(item => item.id === event.detail?.id);
+        if (index >= 0) selectProject(index, { focus: false, showCard: true });
+        else if (event.detail?.sticker?.kind === 'illustration-ip') {
+          renderProjectCard(event.detail.sticker, true);
+          setProjectCardVisible(true);
+        } else setProjectCardVisible(false);
+      });
+      window.addEventListener('room:stickerblur', () => {
+        clearTimeout(projectCardHideTimer);
+        setProjectCardVisible(false);
+      });
+      // Chrome on macOS exposes a two-finger trackpad swipe as a wheel event.
+      // The room forwards that wheel event here so the same one-project-at-a-
+      // time navigation works whether the pointer is on the rail or canvas.
+      window.addEventListener('room:projectwheel', event => stepProjectByWheel(event.detail?.deltaY || 0));
+    }
+
     // ── panel slide ──
     let pauseTimer = null;
     function showPanel(name) {
@@ -499,12 +675,10 @@
       tabWorks.classList.toggle('active', !cv);
       tabCv   .classList.toggle('active',  cv);
       document.querySelector('.ui-topbar').classList.toggle('with-blur', cv);
-      filterBtn.style.display = cv ? 'none' : '';
       dlBtn.style.display     = cv ? '' : 'none';
-      if (cv) {
-        filterDD.classList.remove('open');
-        filterBtn.classList.remove('open');
-      }
+      projectNav.classList.toggle('is-hidden', cv);
+      projectCard.classList.toggle('is-hidden', cv);
+      if (cv) setProjectCardVisible(false);
       clearTimeout(pauseTimer);
       if (!cv) window.__room && window.__room.resume();
       gsap.to(track, {
@@ -523,35 +697,6 @@
     });
     if (location.hash === '#cv') showPanel('cv');
 
-    // ── filter dropdown ──
-    filterBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const open = filterDD.classList.toggle('open');
-      filterBtn.classList.toggle('open', open);
-      filterBtn.setAttribute('aria-expanded', open);
-    });
-    filterDD.querySelectorAll('.ui-drop-item[data-filter]').forEach(item => {
-      item.addEventListener('click', () => {
-        const cat = item.dataset.filter;
-        filterDD.querySelectorAll('.ui-drop-item').forEach(i => i.classList.remove('active'));
-        item.classList.add('active');
-        filterLbl.textContent = item.textContent.trim();
-        filterDD.classList.remove('open');
-        filterBtn.classList.remove('open');
-        filterBtn.setAttribute('aria-expanded', 'false');
-        if (window.__room) window.__room.applyFilter(cat);
-      });
-    });
-    document.getElementById('reset-btn').addEventListener('click', () => {
-      filterDD.classList.remove('open');
-      if (window.__room) window.__room.resetStickers();
-    });
-    document.addEventListener('click', () => {
-      filterDD.classList.remove('open');
-      filterBtn.classList.remove('open');
-      filterBtn.setAttribute('aria-expanded', 'false');
-    });
-
     // wechat row copy
     document.getElementById('wechat-row').addEventListener('click', function () {
       const hint = document.getElementById('copy-hint');
@@ -567,7 +712,7 @@
 
   <!-- 3D room (module) -->
   <script type="module">
-    import { initRoom, addStickers, applyFilter, resetStickers, pause, resume, playReveal } from './js/room3d.js?v=20260906h';
+    import { initRoom, addStickers, focusProject, pause, resume, playReveal } from './js/room3d.js?v=20260907a';
     const container = document.getElementById('room-canvas');
 
     // ── 开场 loader：水注入动画（~2.5s）+ 问候文字 → 停 1s → 化作白雾 ──
@@ -655,8 +800,10 @@
               ipName: ip.name,             // which IP family this belongs to
               name: label,                 // shown in the hover tag
               sticker: encodeURI(pool[i]),
-              tags: [], metrics: [], description: '',
-              role: '', period: '', heroEmoji: '✨',
+              tags: [], metrics: [],
+              description: ip.description || '独立创作的角色插画与贴纸探索。',
+              role: '', period: ip.period || '—',
+              subtitle: ip.subtitle || '', organization: ip.organization || '', heroEmoji: '✨',
               demoType: null, demoUrl: null,
               size: 'tiny',
               ix: Math.random(), iy: Math.random(), rot: 0,
@@ -676,7 +823,7 @@
       addStickers([...(window.STICKERS_DATA || []), ...ipItems]);
     })();
 
-    window.__room = { applyFilter, resetStickers, pause, resume };
+    window.__room = { focusProject, pause, resume };
   </script>
 </body>
 </html>

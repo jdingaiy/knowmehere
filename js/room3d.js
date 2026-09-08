@@ -1136,11 +1136,15 @@ function bindEvents() {
   el.addEventListener('pointerleave', () => {
     hideTag();
     cancelHoverFocus();
+    clearFocusedSticker();
   });
-  // mouse wheel / trackpad vertical scroll -> pan view up/down
+  // Mouse-wheel and macOS two-finger trackpad gestures both arrive as wheel
+  // events. Let the page's project rail consume them one project at a time.
   el.addEventListener('wheel', (e) => {
     e.preventDefault();
-    viewY = clamp(viewY - e.deltaY * 0.01, -CFG.viewYRange, CFG.viewYRange);
+    window.dispatchEvent(new CustomEvent('room:projectwheel', {
+      detail: { deltaY: e.deltaY }
+    }));
   }, { passive: false });
 }
 function setPointer(e) {
@@ -1469,6 +1473,10 @@ function scheduleHoverFocus(entry, event) {
     focusedSticker = entry;
     focusedPointer = pointerAtIntent;
     tagEl.classList.add('anchored');
+    setFocusedStickerLift(entry, true);
+    window.dispatchEvent(new CustomEvent('room:stickerfocus', {
+      detail: { id: entry.data.id, kind: entry.data.kind || 'project', sticker: entry.data }
+    }));
     const safe = safeViewYRange();
     tweenCameraAngle(entry.theta, 480);
     if (Math.abs(entry.y) <= safe) tweenViewY(entry.y, 480);
@@ -1480,9 +1488,27 @@ function cancelHoverFocus() {
   hoverFocusTarget = null;
 }
 function clearFocusedSticker() {
+  const previous = focusedSticker;
   focusedSticker = null;
   focusedPointer = null;
   if (tagEl) tagEl.classList.remove('anchored');
+  if (previous) {
+    setFocusedStickerLift(previous, false);
+    window.dispatchEvent(new CustomEvent('room:stickerblur', {
+      detail: { id: previous.data.id, kind: previous.data.kind || 'project' }
+    }));
+  }
+}
+function setFocusedStickerLift(entry, lifted) {
+  if (!entry || entry.detached || dragging === entry) return;
+  gsap.killTweensOf(entry, 'lift');
+  gsap.to(entry, {
+    lift: lifted ? REST_LIFT + 0.11 : REST_LIFT,
+    duration: reducedMotion() ? 0 : (lifted ? 0.26 : 0.2),
+    ease: lifted ? 'power3.out' : 'power2.out',
+    overwrite: 'auto',
+    onUpdate: () => rebuild(entry),
+  });
 }
 const _tagSurface = { pos: new THREE.Vector3(), normal: new THREE.Vector3() };
 const _tagProjected = new THREE.Vector3();
@@ -1503,13 +1529,22 @@ function showTag(text, x, y) {
   tagEl.classList.add('visible');
 }
 function hideTag() { if (tagEl) tagEl.classList.remove('visible'); }
-/* ============ FILTER / RESET ============ */
-export function applyFilter(cat) {
-  stickers.forEach(s => { s.mesh.visible = (cat === 'all' || s.data.category === cat); });
-}
-export function resetStickers() {
-  stickers.forEach(s => { try { localStorage.removeItem('skP_' + s.data.id); } catch (e) {} });
-  location.reload();
+
+/* ============ PROJECT NAVIGATION ============ */
+// This only moves the camera. Sticker placement, peeling, reflection, sound
+// and empty-space drag inertia all remain independent from navigation focus.
+export function focusProject(id) {
+  if (dragging || rotating) return false;
+  const target = stickers.find(s => s.data.id === id && s.data.kind !== 'illustration-ip');
+  if (!target) return false;
+  stopHint();
+  cancelHoverFocus();
+  clearFocusedSticker();
+  hideTag();
+  const safe = safeViewYRange();
+  tweenCameraAngle(target.theta, 720);
+  tweenViewY(clamp(target.y, -safe, safe), 720);
+  return true;
 }
 
 /* ============ LOOP ============ */

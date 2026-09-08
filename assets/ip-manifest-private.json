@@ -3,6 +3,10 @@
     {
       "name": "keaitianqi",
       "label": "可爱天气",
+      "organization": "小红书",
+      "subtitle": "AIGC",
+      "period": "2026.03",
+      "description": "小红书创新产品“此间”可爱天气小组件天气图标更新。",
       "stickers": [
         "assets/stickers/ip-stickers/keaitianqi/Object-1.webp",
         "assets/stickers/ip-stickers/keaitianqi/Object-2.webp",
