@@ -89,7 +89,12 @@
 }
 .project-progress-item:hover .project-progress-mark { width: 26px; background: rgba(26,24,20,0.72); }
 .project-progress-item.is-active .project-progress-mark { width: 0; background: transparent; }
-.project-progress-item.is-active .project-progress-name,
+.project-progress-item.is-active .project-progress-name {
+  max-width: 150px;
+  opacity: 1;
+  color: var(--ink);
+  transform: translateY(-50%);
+}
 .project-progress-item.is-hovered .project-progress-name {
   max-width: 150px;
   opacity: 1;
@@ -107,17 +112,34 @@
   bottom: 24px;
   width: min(340px, calc(100vw - 96px));
   padding: 34px 34px 30px;
-  background: radial-gradient(ellipse 72% 82% at 50% 50%,
-    rgba(255,255,255,0.66) 0%,
-    rgba(255,255,255,0.42) 44%,
-    rgba(255,255,255,0) 100%);
+  background: none;
   border: 0;
   border-radius: 0;
   opacity: 0;
   pointer-events: none;
   filter: blur(12px);
+  isolation: isolate;
   transition: opacity 0.24s ease, filter 0.32s ease;
 }
+.project-card::before {
+  position: absolute;
+  z-index: 0;
+  right: -96px;
+  bottom: -116px;
+  width: 520px;
+  height: 430px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 47% 58%,
+    rgba(255,255,255,0.9) 0%,
+    rgba(255,255,255,0.64) 24%,
+    rgba(255,255,255,0.34) 48%,
+    rgba(255,255,255,0.1) 65%,
+    rgba(255,255,255,0) 78%);
+  content: '';
+  filter: blur(15px);
+  pointer-events: none;
+}
+.project-card-content { position: relative; z-index: 1; }
 .project-card.is-visible { opacity: 1; filter: blur(0); }
 .project-card.is-hidden { opacity: 0; filter: blur(12px); }
 .project-card-topline {
@@ -270,6 +292,12 @@
     width: min(280px, calc(100vw - 88px));
     padding: 26px 24px 22px;
     transform: none;
+  }
+  .project-card::before {
+    right: -82px;
+    bottom: -90px;
+    width: 400px;
+    height: 330px;
   }
   .project-card-title { margin-top: 12px; font-size: 18px; }
   .project-card-description { display: none; }
