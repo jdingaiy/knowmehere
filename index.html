@@ -488,11 +488,19 @@
 
     function projectCardMarkup(project) {
       const period = String(project.period || '—').replace(/\b20(\d{2})/g, '$1');
+      const organization = project.organization
+        ? `<span class="project-card-organization">${project.organization}</span>`
+        : '';
+      const subtitle = project.subtitle
+        ? `<p class="project-card-subtitle">${project.subtitle}</p>`
+        : '';
       return `
         <div class="project-card-topline">
           <span class="project-card-period">${period}</span>
+          ${organization}
         </div>
         <h1 class="project-card-title">${project.name}</h1>
+        ${subtitle}
         <p class="project-card-description">${project.description || ''}</p>`;
     }
 
@@ -788,7 +796,8 @@
               sticker: encodeURI(pool[i]),
               tags: [], metrics: [],
               description: ip.description || '独立创作的角色插画与贴纸探索。',
-              role: '', period: ip.period || '—', heroEmoji: '✨',
+              role: '', period: ip.period || '—',
+              subtitle: ip.subtitle || '', organization: ip.organization || '', heroEmoji: '✨',
               demoType: null, demoUrl: null,
               size: 'tiny',
               ix: Math.random(), iy: Math.random(), rot: 0,
