@@ -160,22 +160,24 @@
 }
 .project-card-type { text-align: right; }
 .project-card-organization-tag {
-  position: absolute;
+  position: relative;
   z-index: 2;
-  top: -54px;
-  left: -38px;
+  top: 3px;
+  left: 8px;
   display: block;
-  max-width: 102px;
-  max-height: 70px;
+  width: 41px;
+  height: 29px;
   object-fit: contain;
   pointer-events: none;
   transform: rotate(15deg);
   transform-origin: center;
 }
 .project-card-title {
-  margin: 16px 0 5px;
+  display: flex;
+  align-items: center;
+  margin: 16px 0 13px;
   color: var(--ink);
-  font-size: clamp(19px, 2vw, 25px);
+  font-size: clamp(17px, 1.6vw, 21px);
   font-weight: 500;
   letter-spacing: -0.04em;
   line-height: 1.16;
@@ -311,10 +313,8 @@
     height: 330px;
   }
   .project-card-organization-tag {
-    top: -45px;
-    left: -28px;
-    max-width: 41px;
-    max-height: 29px;
+    top: 2px;
+    left: 6px;
   }
   .project-card-title { margin-top: 12px; font-size: 18px; }
 }
