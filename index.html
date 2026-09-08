@@ -535,9 +535,6 @@
 
     function setProjectCardVisible(visible) {
       projectCard.classList.toggle('is-visible', visible);
-      if (visible && !reduceMotion()) {
-        gsap.fromTo(projectCard, { y: 8 }, { y: 0, duration: 0.34, ease: 'power3.out', overwrite: 'auto' });
-      }
     }
 
     function setProjectNavHover(index = null) {
@@ -548,8 +545,8 @@
         item.classList.toggle('is-near-hover', distance === 1);
         if (!reduceMotion()) {
           gsap.to(item.querySelector('.project-progress-mark'), {
-            x: distance === 0 ? 25 : distance === 1 ? 11 : distance === 2 ? 3 : 0,
-            scale: itemIndex === index ? 1.06 : distance === 1 ? 1.025 : 1,
+            x: 0,
+            scaleX: distance === 1 ? 1.28 : distance === 2 ? 1.1 : 1,
             duration: 0.26,
             ease: 'power3.out',
             overwrite: 'auto',

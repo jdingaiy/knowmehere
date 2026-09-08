@@ -1473,6 +1473,7 @@ function scheduleHoverFocus(entry, event) {
     focusedSticker = entry;
     focusedPointer = pointerAtIntent;
     tagEl.classList.add('anchored');
+    setFocusedStickerLift(entry, true);
     window.dispatchEvent(new CustomEvent('room:stickerfocus', {
       detail: { id: entry.data.id, kind: entry.data.kind || 'project', sticker: entry.data }
     }));
@@ -1492,10 +1493,22 @@ function clearFocusedSticker() {
   focusedPointer = null;
   if (tagEl) tagEl.classList.remove('anchored');
   if (previous) {
+    setFocusedStickerLift(previous, false);
     window.dispatchEvent(new CustomEvent('room:stickerblur', {
       detail: { id: previous.data.id, kind: previous.data.kind || 'project' }
     }));
   }
+}
+function setFocusedStickerLift(entry, lifted) {
+  if (!entry || entry.detached || dragging === entry) return;
+  gsap.killTweensOf(entry, 'lift');
+  gsap.to(entry, {
+    lift: lifted ? REST_LIFT + 0.11 : REST_LIFT,
+    duration: reducedMotion() ? 0 : (lifted ? 0.26 : 0.2),
+    ease: lifted ? 'power3.out' : 'power2.out',
+    overwrite: 'auto',
+    onUpdate: () => rebuild(entry),
+  });
 }
 const _tagSurface = { pos: new THREE.Vector3(), normal: new THREE.Vector3() };
 const _tagProjected = new THREE.Vector3();
