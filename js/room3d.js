@@ -635,12 +635,17 @@ export function addStickers(list) {
     return;
   }
   const isPhone = (container.clientWidth || window.innerWidth) < 720;
-  const SIZES = isPhone 
-    ? { large: 5.2, normal: 4.3, small: 3.5, tiny: 2.3 } // scaled up for mobile readability
-    : { large: 4.0, normal: 3.3, small: 2.7, tiny: 1.65 };
+  // Keep the two families visually close without letting extreme image ratios
+  // create oversized banners. The value is the target maximum world dimension.
+  // Scale from the current visual baseline: projects are enlarged to 1.2x,
+  // while illustration stickers are reduced to 0.7x.  These are maximum
+  // world dimensions (not raw quad widths), so portrait and landscape PNGs
+  // remain optically balanced.
+  const projectMax = isPhone ? 4.44 : 3.66;
+  const illustrationMax = isPhone ? 2.1 : 1.75;
 
   list.forEach((d, i) => {
-    const S = SIZES[d.size] || SIZES.normal;
+    const S = projectMax;
 
     const tex = texLoader.load(
       d.sticker,
@@ -675,8 +680,8 @@ export function addStickers(list) {
           const aspect = img.width / img.height;
           const maxMeshDim = S * Math.max(1, 1 / aspect);
           const W_world = 0.065; // unified border width in world units (adjust to change thickness)
-          const B = Math.max(3, Math.round((W_world / maxMeshDim) * maxDim));
-          const P = 4; // transparent padding to prevent edge clamping artifacts
+          const B = 0; // source artwork already carries its own edge treatment
+          const P = 0;
           
           // 3. Create the pre-processed canvas
           const canvas = document.createElement('canvas');
@@ -687,25 +692,7 @@ export function addStickers(list) {
           const drawOffset = B + P;
           
           if (hasTransparency) {
-            // Contour PNG outline: draw silhouette at multiple angles
-            const tempCv = document.createElement('canvas');
-            tempCv.width = img.width;
-            tempCv.height = img.height;
-            const tempCtx = tempCv.getContext('2d');
-            tempCtx.drawImage(img, 0, 0);
-            tempCtx.globalCompositeOperation = 'source-in';
-            tempCtx.fillStyle = '#ffffff';
-            tempCtx.fillRect(0, 0, img.width, img.height);
-            
-            const steps = 48;
-            for (let j = 0; j < steps; j++) {
-              const angle = (j * 2 * Math.PI) / steps;
-              const ox = drawOffset + B * Math.cos(angle);
-              const oy = drawOffset + B * Math.sin(angle);
-              ctx.drawImage(tempCv, ox, oy);
-            }
-            
-            // Draw original image in center
+            // Keep the supplied PNG silhouette without generating a white contour.
             ctx.drawImage(img, drawOffset, drawOffset);
           } else {
             // Rectangular rounded card (screenshots)
@@ -713,18 +700,7 @@ export function addStickers(list) {
             const w = img.width;
             const h = img.height;
             
-            // Draw white border rounded rect (covers outer boundary)
-            ctx.fillStyle = '#ffffff';
-            drawRoundedRect(ctx, P, P, w + 2*B, h + 2*B, r + B);
-            ctx.fill();
-            
-            // Draw image clipped inside
-            ctx.save();
-            ctx.beginPath();
-            drawRoundedRect(ctx, drawOffset, drawOffset, w, h, r);
-            ctx.clip();
             ctx.drawImage(img, drawOffset, drawOffset);
-            ctx.restore();
           }
           
           // 4. Update texture source to canvas
@@ -733,6 +709,10 @@ export function addStickers(list) {
           
           // Update entry properties
           entry.aspect = canvas.width / canvas.height;
+          const maxDimension = d && d.kind === 'illustration-ip'
+            ? illustrationMax
+            : projectMax;
+          entry.S = maxDimension * Math.min(1, entry.aspect);
           
           // 5. Store alpha context for raycasting
           const rayCv = document.createElement('canvas');
@@ -773,7 +753,9 @@ export function addStickers(list) {
       },
       vertexShader: stickerVert, fragmentShader: stickerFrag,
       transparent: true, depthWrite: false, depthTest: true,
-      side: THREE.DoubleSide
+      // Keep the artwork single-sided so foreground promotion never exposes
+      // its untextured back when the camera orbits behind the pole.
+      side: THREE.FrontSide
     });
 
     const shMat = new THREE.ShaderMaterial({
@@ -798,24 +780,29 @@ export function addStickers(list) {
     const y = layout.y;
 
     const mesh = new THREE.Mesh(buildStickerGeometry(theta, y, S), mat);
-    mesh.renderOrder = 2 + i;
+    // Illustration stickers form a quiet background layer. Project artwork is
+    // rendered above it so the first view reads as a coherent project cluster,
+    // while the IP drawings still peek through around the edges.
+    mesh.renderOrder = d && d.kind === 'illustration-ip' ? 2 + i : 40 + i;
     world.add(mesh);
     const flat = new THREE.Mesh(buildFlatGeometry(S, 1, 0.08), mat);
     flat.visible = false;
     flat.renderOrder = 1000;
     world.add(flat);
-    stickers.push({ mesh, flat, shMesh, data: d, theta, y, S, lift: REST_LIFT, peel: 0, peelEdge: null, detached: false, aspect: 1, appear: revealed ? 1 : 0 });
+    stickers.push({ mesh, flat, shMesh, data: d, theta, y, S, lift: REST_LIFT, peel: 0, peelEdge: null, detached: false, aspect: 1, appear: revealed ? 1 : 0, baseRenderOrder: mesh.renderOrder });
   });
   // Aim the camera at whichever side of the pole has the most stickers, so
   // the first paint never lands on an empty back. During the intro the camera
   // starts slightly rotated away / lower and tweens to this pose on reveal.
   const best = densestPose();
   if (best) {
-    _revealPose = best;
+    // Bias the opening composition slightly toward the visual center of the
+    // sticker cluster. The navigation still uses the unmodified pose later.
+    _revealPose = { angle: best.angle - 0.22, y: best.y + 0.5 };
     const safe = (typeof container !== 'undefined' && container)
       ? safeViewYRange() : CFG.viewYRange;
-    cameraAngle = best.angle - 0.55;
-    viewY = clamp(best.y + 2.0, -safe, safe);
+    cameraAngle = _revealPose.angle - 0.55;
+    viewY = clamp(_revealPose.y + 2.0, -safe, safe);
   }
   renderOnce();
   stickersAdded = true;
@@ -913,9 +900,17 @@ function densestPose() {
       let d2 = s.theta - a;
       while (d2 >  Math.PI) d2 -= 2 * Math.PI;
       while (d2 < -Math.PI) d2 += 2 * Math.PI;
-      if (Math.abs(d2) <= HALF) { score++; ySum += s.y; }
+      if (Math.abs(d2) <= HALF) {
+        const isIllustration = s.data && s.data.kind === 'illustration-ip';
+        const weight = isIllustration ? 0.35 : 1;
+        score += weight;
+        ySum += s.y * weight;
+      }
     }
-    if (score > bestScore) {
+    // When several angles expose the same number of projects, prefer the
+    // central pose. This keeps the opening shot centered instead of drifting
+    // toward an edge of the pole because the scan started at -PI.
+    if (score > bestScore || (Math.abs(score - bestScore) < 0.001 && Math.abs(a) < Math.abs(bestAngle))) {
       bestScore = score;
       bestAngle = a;
       bestY = score > 0 ? ySum / score : 0;
@@ -936,16 +931,18 @@ function defaultLayout(d, i) {
   if (d && d.kind === 'illustration-ip') {
     const ix = (typeof d.ix === 'number') ? d.ix : Math.random();
     const iy = (typeof d.iy === 'number') ? d.iy : Math.random();
-    const theta = (ix * 2 - 1) * Math.PI;            // -π..π (full circle)
+    const theta = (ix * 2 - 1) * 1.15;              // keep the first view clustered
     // Half of viewYRange keeps every IP teaser visible from the default
     // camera height — users don't need to pan to find them.
-    const y     = (iy * 2 - 1) * (CFG.viewYRange * 0.5);
+    const y     = (iy * 2 - 1) * (CFG.viewYRange * 0.34);
     return { theta, y };
   }
-  const cols = 3;
+  const cols = 4;
   const col = i % cols, row = Math.floor(i / cols);
-  const theta = (col - (cols - 1) / 2) * 1.1;        // ±1.1 rad — wider arc
-  const y = 4 - row * 2.6 + (col === 1 ? 0 : 0.6);
+  // Keep the cluster readable: neighboring stickers may kiss at an edge,
+  // but their centers stay far enough apart that no artwork is fully hidden.
+  const theta = (col - (cols - 1) / 2) * 0.88;
+  const y = 3.4 - row * 2.75 + (col % 2 ? 0.18 : 0);
   return { theta, y };
 }
 
@@ -1203,7 +1200,10 @@ function onDown(e) {
     cancelHoverFocus();
     clearFocusedSticker();
     dragging = picked;
+    // Initial illustration ordering is intentionally bottom-weighted, but any
+    // direct drag promotes the picked sticker into the shared foreground stack.
     dragging.mesh.renderOrder = ++topOrder;
+    dragging.mesh.material.depthTest = false;
     dragging._touch = (e.pointerType === 'touch');
     dragging._targetTheta = picked.theta;
     dragging._targetY = picked.y;
@@ -1509,6 +1509,12 @@ function clearFocusedSticker() {
 }
 function setFocusedStickerLift(entry, lifted) {
   if (!entry || entry.detached || dragging === entry) return;
+  // Once a sticker has been focused, keep it in the foreground even after
+  // focus leaves; this avoids a visible pop behind neighboring artwork.
+  if (lifted) {
+    entry.mesh.renderOrder = 10000;
+    entry.mesh.material.depthTest = false;
+  }
   gsap.killTweensOf(entry, 'lift');
   gsap.to(entry, {
     lift: lifted ? REST_LIFT + 0.11 : REST_LIFT,
@@ -1549,6 +1555,11 @@ export function focusProject(id) {
   cancelHoverFocus();
   clearFocusedSticker();
   hideTag();
+  focusedSticker = target;
+  setFocusedStickerLift(target, true);
+  window.dispatchEvent(new CustomEvent('room:stickerfocus', {
+    detail: { id: target.data.id, kind: target.data.kind || 'project', sticker: target.data }
+  }));
   const safe = safeViewYRange();
   tweenCameraAngle(target.theta, 720);
   tweenViewY(clamp(target.y, -safe, safe), 720);
@@ -1587,10 +1598,10 @@ export function resume() {
 
 /* ============ STORAGE / UTILS ============ */
 function savePos(id, theta, y) {
-  try { localStorage.setItem('skP_' + id, JSON.stringify({ theta, y })); } catch (e) {}
+  try { localStorage.setItem('skP2_' + id, JSON.stringify({ theta, y })); } catch (e) {}
 }
 function loadPos(id) {
-  try { const r = localStorage.getItem('skP_' + id); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+  try { const r = localStorage.getItem('skP2_' + id); return r ? JSON.parse(r) : null; } catch (e) { return null; }
 }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 function shortestAngleDelta(target, start) {
