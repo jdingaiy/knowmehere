@@ -903,7 +903,10 @@ function densestPose() {
         ySum += s.y * weight;
       }
     }
-    if (score > bestScore) {
+    // When several angles expose the same number of projects, prefer the
+    // central pose. This keeps the opening shot centered instead of drifting
+    // toward an edge of the pole because the scan started at -PI.
+    if (score > bestScore || (Math.abs(score - bestScore) < 0.001 && Math.abs(a) < Math.abs(bestAngle))) {
       bestScore = score;
       bestAngle = a;
       bestY = score > 0 ? ySum / score : 0;
