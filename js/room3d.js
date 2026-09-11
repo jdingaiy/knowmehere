@@ -896,7 +896,12 @@ function densestPose() {
       let d2 = s.theta - a;
       while (d2 >  Math.PI) d2 -= 2 * Math.PI;
       while (d2 < -Math.PI) d2 += 2 * Math.PI;
-      if (Math.abs(d2) <= HALF) { score++; ySum += s.y; }
+      if (Math.abs(d2) <= HALF) {
+        const isIllustration = s.data && s.data.kind === 'illustration-ip';
+        const weight = isIllustration ? 0.35 : 1;
+        score += weight;
+        ySum += s.y * weight;
+      }
     }
     if (score > bestScore) {
       bestScore = score;
