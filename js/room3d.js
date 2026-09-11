@@ -753,7 +753,9 @@ export function addStickers(list) {
       },
       vertexShader: stickerVert, fragmentShader: stickerFrag,
       transparent: true, depthWrite: false, depthTest: true,
-      side: THREE.DoubleSide
+      // Keep the artwork single-sided so foreground promotion never exposes
+      // its untextured back when the camera orbits behind the pole.
+      side: THREE.FrontSide
     });
 
     const shMat = new THREE.ShaderMaterial({
