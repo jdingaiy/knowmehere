@@ -1201,6 +1201,7 @@ function onDown(e) {
     // Initial illustration ordering is intentionally bottom-weighted, but any
     // direct drag promotes the picked sticker into the shared foreground stack.
     dragging.mesh.renderOrder = ++topOrder;
+    dragging.mesh.material.depthTest = false;
     dragging._touch = (e.pointerType === 'touch');
     dragging._targetTheta = picked.theta;
     dragging._targetY = picked.y;
@@ -1508,7 +1509,10 @@ function setFocusedStickerLift(entry, lifted) {
   if (!entry || entry.detached || dragging === entry) return;
   // Once a sticker has been focused, keep it in the foreground even after
   // focus leaves; this avoids a visible pop behind neighboring artwork.
-  if (lifted) entry.mesh.renderOrder = 10000;
+  if (lifted) {
+    entry.mesh.renderOrder = 10000;
+    entry.mesh.material.depthTest = false;
+  }
   gsap.killTweensOf(entry, 'lift');
   gsap.to(entry, {
     lift: lifted ? REST_LIFT + 0.11 : REST_LIFT,
