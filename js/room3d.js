@@ -635,12 +635,13 @@ export function addStickers(list) {
     return;
   }
   const isPhone = (container.clientWidth || window.innerWidth) < 720;
-  // All project and illustration stickers share one visual height. Width
-  // follows each source image's aspect ratio, so artwork is not distorted.
-  const stickerHeight = (isPhone ? 3.1 : 2.55) * 1.2;
+  // Keep the two families visually close without letting extreme image ratios
+  // create oversized banners. The value is the target maximum world dimension.
+  const projectMax = isPhone ? 3.7 : 3.05;
+  const illustrationMax = isPhone ? 3.0 : 2.5;
 
   list.forEach((d, i) => {
-    const S = stickerHeight;
+    const S = projectMax;
 
     const tex = texLoader.load(
       d.sticker,
@@ -704,7 +705,10 @@ export function addStickers(list) {
           
           // Update entry properties
           entry.aspect = canvas.width / canvas.height;
-          entry.S = stickerHeight * entry.aspect;
+          const maxDimension = d && d.kind === 'illustration-ip'
+            ? illustrationMax
+            : projectMax;
+          entry.S = maxDimension * Math.min(1, entry.aspect);
           
           // 5. Store alpha context for raycasting
           const rayCv = document.createElement('canvas');
