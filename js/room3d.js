@@ -89,7 +89,10 @@ function tweenViewY(target, ms) {
 }
 let stickers = [];
 let dragging = null, dragMoved = false, downPos = { x: 0, y: 0 };
-let topOrder = 100;
+// Exactly one sticker owns the foreground slot. Keeping several previously
+// focused stickers at the same huge renderOrder made their ordering depend on
+// Three.js' transparent-object sort and caused angle-dependent popping.
+let foregroundSticker = null;
 let isPaused = false;
 // Desktop hover intent: wait briefly before centring a sticker so casually
 // crossing the pole does not make the camera chase every item.
@@ -105,6 +108,7 @@ const HINT_KEY = 'sk_hint_done_v1';
 let hintTimer = null, hintActive = null, hintStart = 0;
 const DRAG_LIFT = 0.22;    // detached height after a deliberate peel
 const REST_LIFT = 0.025;   // depth-safe resting gap above the pole surface
+const FOCUS_LIFT = REST_LIFT + 0.11;
 const PEEL_START = 0.20;   // clearly visible edge curl on pointer-down
 const PEEL_DISTANCE = 150; // longer tactile peel before flat drag takes over
 const PEEL_DETACH = 0.84;  // curl becomes a free, flat sticker after this point
@@ -1202,8 +1206,7 @@ function onDown(e) {
     dragging = picked;
     // Initial illustration ordering is intentionally bottom-weighted, but any
     // direct drag promotes the picked sticker into the shared foreground stack.
-    dragging.mesh.renderOrder = ++topOrder;
-    dragging.mesh.material.depthTest = false;
+    promoteSticker(dragging);
     dragging._touch = (e.pointerType === 'touch');
     dragging._targetTheta = picked.theta;
     dragging._targetY = picked.y;
@@ -1509,20 +1512,39 @@ function clearFocusedSticker() {
 }
 function setFocusedStickerLift(entry, lifted) {
   if (!entry || entry.detached || dragging === entry) return;
-  // Once a sticker has been focused, keep it in the foreground even after
-  // focus leaves; this avoids a visible pop behind neighboring artwork.
-  if (lifted) {
-    entry.mesh.renderOrder = 10000;
-    entry.mesh.material.depthTest = false;
-  }
+  // The last focused/dragged sticker keeps the one shared foreground slot.
+  // Depth testing must remain enabled: the pole then hides the sticker as it
+  // rotates to the back, while renderOrder still places it above other
+  // transparent stickers on the visible face.
+  if (lifted) promoteSticker(entry);
   gsap.killTweensOf(entry, 'lift');
   gsap.to(entry, {
-    lift: lifted ? REST_LIFT + 0.11 : REST_LIFT,
+    lift: lifted || foregroundSticker === entry ? FOCUS_LIFT : REST_LIFT,
     duration: reducedMotion() ? 0 : (lifted ? 0.26 : 0.2),
     ease: lifted ? 'power3.out' : 'power2.out',
     overwrite: 'auto',
     onUpdate: () => rebuild(entry),
   });
+}
+
+function promoteSticker(entry) {
+  if (!entry) return;
+  if (foregroundSticker && foregroundSticker !== entry) {
+    const previous = foregroundSticker;
+    previous.mesh.renderOrder = previous.baseRenderOrder;
+    previous.mesh.material.depthTest = true;
+    gsap.killTweensOf(previous, 'lift');
+    gsap.to(previous, {
+      lift: REST_LIFT,
+      duration: reducedMotion() ? 0 : 0.18,
+      ease: 'power2.out',
+      overwrite: 'auto',
+      onUpdate: () => rebuild(previous),
+    });
+  }
+  foregroundSticker = entry;
+  entry.mesh.renderOrder = 10000;
+  entry.mesh.material.depthTest = true;
 }
 const _tagSurface = { pos: new THREE.Vector3(), normal: new THREE.Vector3() };
 const _tagProjected = new THREE.Vector3();
@@ -1598,10 +1620,13 @@ export function resume() {
 
 /* ============ STORAGE / UTILS ============ */
 function savePos(id, theta, y) {
-  try { localStorage.setItem('skP2_' + id, JSON.stringify({ theta, y })); } catch (e) {}
+  try { localStorage.setItem('skP3_' + id, JSON.stringify({ theta, y })); } catch (e) {}
 }
 function loadPos(id) {
-  try { const r = localStorage.getItem('skP2_' + id); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+  // v3 intentionally invalidates the earlier, much more scattered layout.
+  // This makes the deployed first visit match the compact authored cluster
+  // even for people who dragged stickers in a previous release.
+  try { const r = localStorage.getItem('skP3_' + id); return r ? JSON.parse(r) : null; } catch (e) { return null; }
 }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 function shortestAngleDelta(target, start) {
