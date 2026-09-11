@@ -787,7 +787,7 @@ export function addStickers(list) {
     flat.visible = false;
     flat.renderOrder = 1000;
     world.add(flat);
-    stickers.push({ mesh, flat, shMesh, data: d, theta, y, S, lift: REST_LIFT, peel: 0, peelEdge: null, detached: false, aspect: 1, appear: revealed ? 1 : 0 });
+    stickers.push({ mesh, flat, shMesh, data: d, theta, y, S, lift: REST_LIFT, peel: 0, peelEdge: null, detached: false, aspect: 1, appear: revealed ? 1 : 0, baseRenderOrder: mesh.renderOrder });
   });
   // Aim the camera at whichever side of the pole has the most stickers, so
   // the first paint never lands on an empty back. During the intro the camera
@@ -1504,6 +1504,9 @@ function clearFocusedSticker() {
 }
 function setFocusedStickerLift(entry, lifted) {
   if (!entry || entry.detached || dragging === entry) return;
+  // Once a sticker has been focused, keep it in the foreground even after
+  // focus leaves; this avoids a visible pop behind neighboring artwork.
+  if (lifted) entry.mesh.renderOrder = 10000;
   gsap.killTweensOf(entry, 'lift');
   gsap.to(entry, {
     lift: lifted ? REST_LIFT + 0.11 : REST_LIFT,
@@ -1544,6 +1547,11 @@ export function focusProject(id) {
   cancelHoverFocus();
   clearFocusedSticker();
   hideTag();
+  focusedSticker = target;
+  setFocusedStickerLift(target, true);
+  window.dispatchEvent(new CustomEvent('room:stickerfocus', {
+    detail: { id: target.data.id, kind: target.data.kind || 'project', sticker: target.data }
+  }));
   const safe = safeViewYRange();
   tweenCameraAngle(target.theta, 720);
   tweenViewY(clamp(target.y, -safe, safe), 720);
