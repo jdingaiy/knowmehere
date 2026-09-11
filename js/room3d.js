@@ -794,11 +794,13 @@ export function addStickers(list) {
   // starts slightly rotated away / lower and tweens to this pose on reveal.
   const best = densestPose();
   if (best) {
-    _revealPose = best;
+    // Bias the opening composition slightly toward the visual center of the
+    // sticker cluster. The navigation still uses the unmodified pose later.
+    _revealPose = { angle: best.angle - 0.22, y: best.y + 0.5 };
     const safe = (typeof container !== 'undefined' && container)
       ? safeViewYRange() : CFG.viewYRange;
-    cameraAngle = best.angle - 0.55;
-    viewY = clamp(best.y + 2.0, -safe, safe);
+    cameraAngle = _revealPose.angle - 0.55;
+    viewY = clamp(_revealPose.y + 2.0, -safe, safe);
   }
   renderOnce();
   stickersAdded = true;
