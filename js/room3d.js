@@ -635,12 +635,12 @@ export function addStickers(list) {
     return;
   }
   const isPhone = (container.clientWidth || window.innerWidth) < 720;
-  const SIZES = isPhone 
-    ? { large: 5.2, normal: 4.3, small: 3.5, tiny: 2.3 } // scaled up for mobile readability
-    : { large: 4.0, normal: 3.3, small: 2.7, tiny: 1.65 };
+  // Use one visual height for every project sticker. Width follows each
+  // source image's aspect ratio, so artwork is never stretched or squashed.
+  const stickerHeight = isPhone ? 3.1 : 2.55;
 
   list.forEach((d, i) => {
-    const S = SIZES[d.size] || SIZES.normal;
+    const S = stickerHeight;
 
     const tex = texLoader.load(
       d.sticker,
@@ -733,6 +733,7 @@ export function addStickers(list) {
           
           // Update entry properties
           entry.aspect = canvas.width / canvas.height;
+          entry.S = stickerHeight * entry.aspect;
           
           // 5. Store alpha context for raycasting
           const rayCv = document.createElement('canvas');
