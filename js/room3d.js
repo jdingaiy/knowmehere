@@ -675,8 +675,8 @@ export function addStickers(list) {
           const aspect = img.width / img.height;
           const maxMeshDim = S * Math.max(1, 1 / aspect);
           const W_world = 0.065; // unified border width in world units (adjust to change thickness)
-          const B = Math.max(3, Math.round((W_world / maxMeshDim) * maxDim));
-          const P = 4; // transparent padding to prevent edge clamping artifacts
+          const B = 0; // source artwork already carries its own edge treatment
+          const P = 0;
           
           // 3. Create the pre-processed canvas
           const canvas = document.createElement('canvas');
@@ -687,25 +687,7 @@ export function addStickers(list) {
           const drawOffset = B + P;
           
           if (hasTransparency) {
-            // Contour PNG outline: draw silhouette at multiple angles
-            const tempCv = document.createElement('canvas');
-            tempCv.width = img.width;
-            tempCv.height = img.height;
-            const tempCtx = tempCv.getContext('2d');
-            tempCtx.drawImage(img, 0, 0);
-            tempCtx.globalCompositeOperation = 'source-in';
-            tempCtx.fillStyle = '#ffffff';
-            tempCtx.fillRect(0, 0, img.width, img.height);
-            
-            const steps = 48;
-            for (let j = 0; j < steps; j++) {
-              const angle = (j * 2 * Math.PI) / steps;
-              const ox = drawOffset + B * Math.cos(angle);
-              const oy = drawOffset + B * Math.sin(angle);
-              ctx.drawImage(tempCv, ox, oy);
-            }
-            
-            // Draw original image in center
+            // Keep the supplied PNG silhouette without generating a white contour.
             ctx.drawImage(img, drawOffset, drawOffset);
           } else {
             // Rectangular rounded card (screenshots)
@@ -713,18 +695,7 @@ export function addStickers(list) {
             const w = img.width;
             const h = img.height;
             
-            // Draw white border rounded rect (covers outer boundary)
-            ctx.fillStyle = '#ffffff';
-            drawRoundedRect(ctx, P, P, w + 2*B, h + 2*B, r + B);
-            ctx.fill();
-            
-            // Draw image clipped inside
-            ctx.save();
-            ctx.beginPath();
-            drawRoundedRect(ctx, drawOffset, drawOffset, w, h, r);
-            ctx.clip();
             ctx.drawImage(img, drawOffset, drawOffset);
-            ctx.restore();
           }
           
           // 4. Update texture source to canvas
@@ -937,16 +908,16 @@ function defaultLayout(d, i) {
   if (d && d.kind === 'illustration-ip') {
     const ix = (typeof d.ix === 'number') ? d.ix : Math.random();
     const iy = (typeof d.iy === 'number') ? d.iy : Math.random();
-    const theta = (ix * 2 - 1) * Math.PI;            // -π..π (full circle)
+    const theta = (ix * 2 - 1) * 1.15;              // keep the first view clustered
     // Half of viewYRange keeps every IP teaser visible from the default
     // camera height — users don't need to pan to find them.
-    const y     = (iy * 2 - 1) * (CFG.viewYRange * 0.5);
+    const y     = (iy * 2 - 1) * (CFG.viewYRange * 0.34);
     return { theta, y };
   }
-  const cols = 3;
+  const cols = 4;
   const col = i % cols, row = Math.floor(i / cols);
-  const theta = (col - (cols - 1) / 2) * 1.1;        // ±1.1 rad — wider arc
-  const y = 4 - row * 2.6 + (col === 1 ? 0 : 0.6);
+  const theta = (col - (cols - 1) / 2) * 0.72;
+  const y = 2.8 - row * 1.85 + (col % 2 ? 0.25 : 0);
   return { theta, y };
 }
 
@@ -1588,10 +1559,10 @@ export function resume() {
 
 /* ============ STORAGE / UTILS ============ */
 function savePos(id, theta, y) {
-  try { localStorage.setItem('skP_' + id, JSON.stringify({ theta, y })); } catch (e) {}
+  try { localStorage.setItem('skP2_' + id, JSON.stringify({ theta, y })); } catch (e) {}
 }
 function loadPos(id) {
-  try { const r = localStorage.getItem('skP_' + id); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+  try { const r = localStorage.getItem('skP2_' + id); return r ? JSON.parse(r) : null; } catch (e) { return null; }
 }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 function shortestAngleDelta(target, start) {
