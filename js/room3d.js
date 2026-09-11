@@ -778,7 +778,10 @@ export function addStickers(list) {
     const y = layout.y;
 
     const mesh = new THREE.Mesh(buildStickerGeometry(theta, y, S), mat);
-    mesh.renderOrder = 2 + i;
+    // Illustration stickers form a quiet background layer. Project artwork is
+    // rendered above it so the first view reads as a coherent project cluster,
+    // while the IP drawings still peek through around the edges.
+    mesh.renderOrder = d && d.kind === 'illustration-ip' ? 2 + i : 40 + i;
     world.add(mesh);
     const flat = new THREE.Mesh(buildFlatGeometry(S, 1, 0.08), mat);
     flat.visible = false;
