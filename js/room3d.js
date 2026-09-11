@@ -1198,6 +1198,8 @@ function onDown(e) {
     cancelHoverFocus();
     clearFocusedSticker();
     dragging = picked;
+    // Initial illustration ordering is intentionally bottom-weighted, but any
+    // direct drag promotes the picked sticker into the shared foreground stack.
     dragging.mesh.renderOrder = ++topOrder;
     dragging._touch = (e.pointerType === 'touch');
     dragging._targetTheta = picked.theta;
