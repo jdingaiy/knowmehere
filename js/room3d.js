@@ -637,8 +637,12 @@ export function addStickers(list) {
   const isPhone = (container.clientWidth || window.innerWidth) < 720;
   // Keep the two families visually close without letting extreme image ratios
   // create oversized banners. The value is the target maximum world dimension.
-  const projectMax = isPhone ? 3.7 : 3.05;
-  const illustrationMax = isPhone ? 3.0 : 2.5;
+  // Scale from the current visual baseline: projects are enlarged to 1.2x,
+  // while illustration stickers are reduced to 0.7x.  These are maximum
+  // world dimensions (not raw quad widths), so portrait and landscape PNGs
+  // remain optically balanced.
+  const projectMax = isPhone ? 4.44 : 3.66;
+  const illustrationMax = isPhone ? 2.1 : 1.75;
 
   list.forEach((d, i) => {
     const S = projectMax;
@@ -920,8 +924,10 @@ function defaultLayout(d, i) {
   }
   const cols = 4;
   const col = i % cols, row = Math.floor(i / cols);
-  const theta = (col - (cols - 1) / 2) * 0.72;
-  const y = 2.8 - row * 1.85 + (col % 2 ? 0.25 : 0);
+  // Keep the cluster readable: neighboring stickers may kiss at an edge,
+  // but their centers stay far enough apart that no artwork is fully hidden.
+  const theta = (col - (cols - 1) / 2) * 0.88;
+  const y = 3.4 - row * 2.75 + (col % 2 ? 0.18 : 0);
   return { theta, y };
 }
 
