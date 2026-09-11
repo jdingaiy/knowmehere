@@ -635,14 +635,11 @@ export function addStickers(list) {
     return;
   }
   const isPhone = (container.clientWidth || window.innerWidth) < 720;
-  // Project stickers share one visual height. Illustration/IP stickers are
-  // intentionally 1.5x taller, while width still follows the source ratio.
-  const projectHeight = isPhone ? 3.1 : 2.55;
+  // All project and illustration stickers share one visual height. Width
+  // follows each source image's aspect ratio, so artwork is not distorted.
+  const stickerHeight = (isPhone ? 3.1 : 2.55) * 1.2;
 
   list.forEach((d, i) => {
-    const stickerHeight = d && d.kind === 'illustration-ip'
-      ? projectHeight * 1.5
-      : projectHeight;
     const S = stickerHeight;
 
     const tex = texLoader.load(
