@@ -231,9 +231,9 @@
   </div>
 
   <!-- sticker data (global STICKERS_DATA) -->
-  <script src="js/stickers-data.js?v=20260911-stickers"></script>
+  <script src="js/stickers-data.js?v=20260923-hide-sixteen"></script>
   <!-- 附加项目数据（原 NDA 项目，已全站公开） -->
-  <script src="js/stickers-private.js?v=20260911-stickers"></script>
+  <script src="js/stickers-private.js?v=20260923-hide-sixteen"></script>
   <!-- Keep GSAP local: the loader must not depend on a third-party CDN. -->
   <script src="js/gsap.min.js"></script>
 
@@ -476,7 +476,7 @@
     const projectCard = document.getElementById('project-card');
     const projectCardContent = document.getElementById('project-card-content');
     const projectItems = (window.STICKERS_DATA || [])
-      .filter(project => project.kind !== 'illustration-ip');
+      .filter(project => !project.hidden && project.kind !== 'illustration-ip');
     let activeProjectIndex = 0;
     let wheelTargetIndex = null;
     let wheelDelta = 0;
@@ -817,7 +817,7 @@
     }
     (async () => {
       const ipItems = await loadIpStickers();
-      addStickers([...(window.STICKERS_DATA || []), ...ipItems]);
+      addStickers([...(window.STICKERS_DATA || []).filter(project => !project.hidden), ...ipItems]);
     })();
 
     window.__room = { focusProject, pause, resume };
