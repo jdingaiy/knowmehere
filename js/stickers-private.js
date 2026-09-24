@@ -5,7 +5,6 @@
 STICKERS_DATA.push(
   {
     id: 'sixteen',
-    hidden: true,
     category: 'portfolio',
     surface: 'wall',
     name: 'AI 健康打卡APP',
