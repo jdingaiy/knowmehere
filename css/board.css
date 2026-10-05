@@ -165,10 +165,13 @@
   top: 3px;
   left: 8px;
   display: block;
-  width: 41px;
-  height: 29px;
+  width: 32.8px;
+  height: 23.2px;
   object-fit: contain;
   pointer-events: none;
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff)
+          drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff)
+          drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff);
   transform: rotate(15deg);
   transform-origin: center;
 }

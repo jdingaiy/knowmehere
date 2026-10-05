@@ -6,9 +6,9 @@
   <title>谭加奇 · 作品集</title>
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <meta name="description" content="谭加奇 · UX 设计师 / AI 产品方向 · 天津大学 2027届" />
-  <link rel="stylesheet" href="css/global.css" />
-  <link rel="stylesheet" href="css/board.css" />
-  <link rel="stylesheet" href="css/pages.css" />
+  <link rel="stylesheet" href="css/global.css?v=20261005-ip-fit" />
+  <link rel="stylesheet" href="css/board.css?v=20261005-icon-outline" />
+  <link rel="stylesheet" href="css/pages.css?v=20261005-icons-spacing" />
   <!-- Preload critical assets in parallel with the HTML parse so the
        cylinder appears as soon as the JS runs. -->
   <link rel="preload" as="image"
@@ -221,7 +221,9 @@
        backdrop-filter (in IP mode) which establishes a containing block for
        position:fixed descendants and would otherwise let the button scroll
        with the overlay's content. -->
-  <button class="modal-close-btn" aria-label="关闭">✕</button>
+  <button class="modal-close-btn" aria-label="返回首页" title="返回首页">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+  </button>
   <div id="modal-overlay" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box">
       <div class="modal-body">
@@ -229,11 +231,15 @@
       </div>
     </div>
   </div>
+  <div class="image-lightbox" id="image-lightbox" aria-hidden="true">
+    <button type="button" class="image-lightbox-close" aria-label="关闭大图">✕</button>
+    <img alt="放大查看" />
+  </div>
 
   <!-- sticker data (global STICKERS_DATA) -->
-  <script src="js/stickers-data.js?v=20260924-show-sixteen"></script>
+  <script src="js/stickers-data.js?v=20261005-portfolio-icons"></script>
   <!-- 附加项目数据（原 NDA 项目，已全站公开） -->
-  <script src="js/stickers-private.js?v=20260924-show-sixteen"></script>
+  <script src="js/stickers-private.js?v=20261005-portfolio-icons"></script>
   <!-- Keep GSAP local: the loader must not depend on a third-party CDN. -->
   <script src="js/gsap.min.js"></script>
 
@@ -279,13 +285,13 @@
       const longs = (Array.isArray(d.longImages) && d.longImages.length)
         ? `<section class="dp-long">
              ${d.longImages.map(src =>
-               `<img src="${src}" alt="${d.name}" loading="lazy" />`).join('')}
+               `<img src="${src}" alt="${d.name}" loading="lazy" tabindex="0" role="button" aria-label="点击放大查看：${d.name}" />`).join('')}
            </section>`
         : '';
       if (!hasDemo && !longs) {
-        return `<div class="dp-empty">「${d.name}」内容尚未上传</div>`;
+        return `<header class="dp-intro"><p class="dp-kicker">${d.organization || ''} · ${d.subtitle || ''}</p><h1>${d.name}</h1><p>${d.description || ''}</p></header><div class="dp-empty">「${d.name}」内容尚未上传</div>`;
       }
-      return `${demo}${longs}`;
+      return `<header class="dp-intro"><p class="dp-kicker">${d.organization || ''} · ${d.subtitle || ''}</p><h1>${d.name}</h1><p>${d.description || ''}</p></header>${demo}${longs}`;
     }
 
     // Build the IP / illustration detail page for ONE specific IP, based on
@@ -303,11 +309,16 @@
         const r1 = ((seed >>> 0)  % 1000) / 1000;  // [0,1)
         const r2 = ((seed >>> 9)  % 1000) / 1000;
         const r3 = ((seed >>> 17) % 1000) / 1000;
-        // Spread within 8%-92% of viewport, slight tilt, uniform size
-        const left = (6 + r1 * 86).toFixed(1);
-        const top  = (8 + r2 * 78).toFixed(1);
         const rot  = ((r3 - 0.5) * 30).toFixed(1);
-        const sz   = 130;                            // uniform — no big/small mix
+        const stageWidth = Math.min(overlay.clientWidth || window.innerWidth || 1024, 1200);
+        const stageHeight = window.innerHeight || 768;
+        const sz = Math.min(130, Math.max(72, Math.min(stageWidth, stageHeight) * 0.28));
+        const angle = Math.abs(Number(rot)) * Math.PI / 180;
+        const extent = (sz / 2) * (Math.cos(angle) + Math.sin(angle)) * 1.12 + 12;
+        const minX = Math.min(stageWidth / 2, extent);
+        const minY = Math.min(stageHeight / 2, extent);
+        const left = ((minX + r1 * Math.max(0, stageWidth - minX * 2)) / stageWidth * 100).toFixed(2);
+        const top  = ((minY + r2 * Math.max(0, stageHeight - minY * 2)) / stageHeight * 100).toFixed(2);
         const delay = (i * 28).toFixed(0);           // staggered entrance
         return `<img class="ip-fly" src="${encodeURI(s.src)}" alt="${s.ip}"
           data-rot="${rot}" data-ip="${s.ip}"
@@ -326,11 +337,14 @@
       return `
         <section class="ip-hero">
           <div class="ip-hero-stage">${flyHtml}</div>
-          <div class="ip-hero-hint">下滑查看插画 ↓</div>
         </section>
         ${pages.join('')}`;
     }
-    function openModal(d) {
+    function openModal(d, fromRoute = false) {
+      if (!fromRoute && d && d.id) {
+        const route = `#project=${encodeURIComponent(d.id)}`;
+        if (location.hash !== route) history.pushState({ project: d.id }, '', route);
+      }
       currentModal = d;
       document.getElementById('modal-slot').innerHTML = renderModal(d);
       const isIp = d && d.kind === 'illustration-ip';
@@ -358,7 +372,10 @@
         .fromTo('.modal-close-btn', { autoAlpha: 0, scale: reduceMotion() ? 1 : 0.88 },
           { autoAlpha: 1, scale: 1, duration: duration * 0.7, ease: 'back.out(1.5)' }, 0.1);
     }
-    function closeModal() {
+    function closeModal(fromRoute = false) {
+      if (!fromRoute && location.hash.startsWith('#project=')) {
+        history.replaceState({}, '', location.pathname + location.search);
+      }
       const finish = () => {
         overlay.classList.remove('open', 'ip-mode');
         document.body.classList.remove('modal-open', 'ip-modal');
@@ -392,10 +409,11 @@
           const r = stage.getBoundingClientRect();
           let nx = baseLeft + (e.clientX - sx);
           let ny = baseTop  + (e.clientY - sy);
-          const halfW = el.offsetWidth  / 2;
-          const halfH = el.offsetHeight / 2;
-          nx = Math.max(halfW, Math.min(r.width  - halfW, nx));
-          ny = Math.max(halfH, Math.min(r.height - halfH, ny));
+          const angle = Math.abs(rot) * Math.PI / 180;
+          const extentX = (el.offsetWidth * Math.cos(angle) + el.offsetHeight * Math.sin(angle)) / 2;
+          const extentY = (el.offsetHeight * Math.cos(angle) + el.offsetWidth * Math.sin(angle)) / 2;
+          nx = Math.max(extentX, Math.min(r.width  - extentX, nx));
+          ny = Math.max(extentY, Math.min(r.height - extentY, ny));
           el.style.left = nx + 'px';
           el.style.top  = ny + 'px';
         };
@@ -464,8 +482,46 @@
     }    overlay.addEventListener('click', e => {
       if (e.target === overlay) closeModal();
     });
-    document.querySelector('.modal-close-btn').addEventListener('click', closeModal);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && currentModal) closeModal(); });
+    document.querySelector('.modal-close-btn').addEventListener('click', () => closeModal());
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      if (lightbox.classList.contains('open')) closeLightbox();
+      else if (currentModal) closeModal();
+    });
+    window.addEventListener('hashchange', () => {
+      const match = location.hash.match(/^#project=(.+)$/);
+      if (!match) {
+        if (currentModal) closeModal(true);
+        return;
+      }
+      const projectId = decodeURIComponent(match[1]);
+      const project = (window.STICKERS_DATA || []).find(item => item.id === projectId);
+      if (project && (!currentModal || currentModal.id !== projectId)) openModal(project, true);
+    });
+
+    const lightbox = document.getElementById('image-lightbox');
+    const lightboxImg = lightbox.querySelector('img');
+    function closeLightbox() {
+      lightbox.classList.remove('open');
+      lightbox.setAttribute('aria-hidden', 'true');
+      lightboxImg.removeAttribute('src');
+    }
+    function showLightbox(img) {
+      lightboxImg.src = img.currentSrc || img.src;
+      lightboxImg.alt = img.alt || '放大查看';
+      lightbox.classList.add('open');
+      lightbox.setAttribute('aria-hidden', 'false');
+    }
+    overlay.addEventListener('click', e => {
+      const img = e.target.closest('.dp-long img, .ip-page img');
+      if (img) showLightbox(img);
+    });
+    overlay.addEventListener('keydown', e => {
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.dp-long img, .ip-page img')) {
+        e.preventDefault(); showLightbox(e.target);
+      }
+    });
+    lightbox.addEventListener('click', e => { if (e.target === lightbox || e.target.closest('.image-lightbox-close')) closeLightbox(); });
     window.__modalApi = { open: openModal, close: closeModal };
 
     // ── project progress navigation ──
@@ -484,10 +540,11 @@
     let wheelCommitTimer = null;
     let projectCardHideTimer = null;
     const ORGANIZATION_TAGS = {
-      Tars: 'assets/tags/tars.svg',
-      IKEA: 'assets/tags/ikea.svg',
-      '个人': 'assets/tags/personal.svg',
-      '小红书': 'assets/tags/xiaohongshu.svg',
+      Tars: 'assets/tags/tars.svg?v=20261005',
+      IKEA: 'assets/tags/ikea.svg?v=20261005',
+      '个人': 'assets/tags/sevnana.svg?v=20261005',
+      '小红书': 'assets/tags/xiaohongshu.svg?v=20261005',
+      '知乎': 'assets/tags/zhihu.svg?v=20261005',
     };
 
     function projectCardMarkup(project) {
@@ -705,6 +762,17 @@
     });
 
 
+  </script>
+
+  <script>
+    // Open a shared project URL immediately; the 3D homepage can finish loading behind it.
+    const initialProjectRoute = location.hash.match(/^#project=(.+)$/);
+    if (initialProjectRoute) {
+      const initialProject = (window.STICKERS_DATA || []).find(
+        item => item.id === decodeURIComponent(initialProjectRoute[1])
+      );
+      if (initialProject) window.__modalApi.open(initialProject, true);
+    }
   </script>
 
   <!-- 3D room (module) -->
