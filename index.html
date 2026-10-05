@@ -7,7 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <meta name="description" content="谭加奇 · UX 设计师 / AI 产品方向 · 天津大学 2027届" />
   <link rel="stylesheet" href="css/global.css?v=20261005-ip-fit" />
-  <link rel="stylesheet" href="css/board.css?v=20261005-icon-outline" />
+  <link rel="stylesheet" href="css/board.css?v=20261006-room-intro-v3" />
   <link rel="stylesheet" href="css/pages.css?v=20261005-icons-spacing" />
   <!-- Preload critical assets in parallel with the HTML parse so the
        cylinder appears as soon as the JS runs. -->
@@ -15,14 +15,15 @@
         href="assets/texture/gravel_embedded_concrete_2k.blend/textures/gravel_embedded_concrete_diff_2k.jpg" />
   <link rel="preload" as="fetch" crossorigin
         href="assets/ip-manifest.json" />
-  <link rel="modulepreload" href="js/room3d.js?v=20260907a" />
+  <link rel="modulepreload" href="js/room3d.js?v=20261006-click-peel-sound" />
   <link rel="preload" as="script" href="js/stickers-data.js" />
 
 </head>
 <body>
 
-  <!-- ── LOADER: 磨砂白背景，主页资源就绪后渐清揭幕 ── -->
-  <div id="loader" aria-hidden="true"></div>
+  <div class="room-loader" id="room-loader" role="status" aria-label="作品正在加载">
+    <div class="room-loader-mark"><img src="assets/logo.svg" alt="" /></div>
+  </div>
 
   <!-- ── TOP BAR: logo + tabs ── -->
   <nav class="ui-topbar" role="navigation" aria-label="页面切换">
@@ -234,7 +235,7 @@
   <script src="js/stickers-data.js?v=20261005-portfolio-icons"></script>
   <!-- 附加项目数据（原 NDA 项目，已全站公开） -->
   <script src="js/stickers-private.js?v=20261005-portfolio-icons"></script>
-  <!-- Keep GSAP local: the loader must not depend on a third-party CDN. -->
+  <!-- Keep GSAP local so interface animations do not depend on a third-party CDN. -->
   <script src="js/gsap.min.js"></script>
 
   <!-- modal + UI logic (non-module) -->
@@ -377,6 +378,7 @@
         gsap.set([overlay, '.modal-box', '.modal-close-btn'], { clearProps: 'all' });
         if (window.__room && !track.classList.contains('show-cv')) window.__room.resume();
         currentModal = null;
+        window.dispatchEvent(new CustomEvent('room:detailclosed'));
       };
       gsap.killTweensOf([overlay, '.modal-box', '.modal-close-btn']);
       if (reduceMotion()) return finish();
@@ -771,31 +773,22 @@
 
   <!-- 3D room (module) -->
   <script type="module">
-    import { initRoom, addStickers, focusProject, pause, resume, playReveal } from './js/room3d.js?v=20260911-layer-fix';
+    import { initRoom, addStickers, finishStickerRegistration, focusProject, pause, resume, playReveal } from './js/room3d.js?v=20261006-click-peel-sound';
     const container = document.getElementById('room-canvas');
-
-    // ── 开场 loader：等待主页资源就绪，再渐清磨砂背景 ──
-    const loaderEl = document.getElementById('loader');
-    let assetsReady = false, loaderGone = false;
-    function tryExit() {
-      if (!assetsReady || loaderGone) return;
-      loaderGone = true;
-      playReveal();                    // 场景揭幕（相机环绕/贴纸贴上/光斑渐亮）与白雾同步
-      loaderEl.classList.add('done');
-      gsap.to(loaderEl, {
-        autoAlpha: 0,
-        duration: reduceMotion() ? 0 : 0.96,
-        ease: 'power2.out',
-        onComplete: () => loaderEl.remove(),
-      });
-    }
-    setTimeout(() => { assetsReady = true; tryExit(); }, 12000); // 资源兜底
-
-    initRoom({
-      container,
-      modalApi: window.__modalApi,
-      onReady: () => { assetsReady = true; tryExit(); },
-    });
+    const introLoader = document.getElementById('room-loader');
+    const introStartedAt = performance.now();
+    let introReady = false;
+    const finishIntro = () => {
+      if (introReady) return;
+      introReady = true;
+      const remaining = Math.max(0, 2000 - (performance.now() - introStartedAt));
+      setTimeout(() => {
+        playReveal();
+        requestAnimationFrame(() => introLoader?.classList.add('is-exiting'));
+        setTimeout(() => introLoader?.remove(), 620);
+      }, remaining);
+    };
+    initRoom({ container, modalApi: window.__modalApi, onReady: finishIntro });
 
     // Load the IP-asset manifest, expand each sticker PNG into a synthetic
     // sticker-data entry (kind='illustration-ip'), and add them alongside the
@@ -866,9 +859,13 @@
         return [];
       }
     }
+    // Start the core project stickers immediately. The IP manifest can be
+    // slow or unavailable and should never hold the whole room behind it.
+    addStickers((window.STICKERS_DATA || []).filter(project => !project.hidden));
     (async () => {
       const ipItems = await loadIpStickers();
-      addStickers([...(window.STICKERS_DATA || []).filter(project => !project.hidden), ...ipItems]);
+      if (ipItems.length) addStickers(ipItems);
+      finishStickerRegistration();
     })();
 
     window.__room = { focusProject, pause, resume };

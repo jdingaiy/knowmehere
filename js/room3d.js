@@ -13,6 +13,10 @@
  */
 import * as THREE from './three.module.js';
 
+// Sticker Forge is loaded only when a sticker is focused or opened. The local
+// MIT-licensed bundle keeps peel rendering independent from the room renderer.
+const stickerForgeModule = () => import('../assets/vendor/sticker-forge/sticker-forge.es.js');
+
 const gsap = window.gsap;
 const reducedMotion = () => window.__motionReduced?.() ?? false;
 const stickerTimeUniform = { value: 0 };
@@ -61,7 +65,7 @@ function tweenCameraAngle(target, ms) {
   _rotAnim = gsap.to(state, {
     value: start + delta,
     duration: reducedMotion() ? 0 : ms / 1000,
-    ease: 'power3.out',
+    ease: 'power3.inOut',
     overwrite: 'auto',
     onUpdate: () => { cameraAngle = state.value; },
     onComplete: () => { _rotAnim = null; },
@@ -80,7 +84,7 @@ function tweenViewY(target, ms) {
   _yAnim = gsap.to(state, {
     value: goal,
     duration: reducedMotion() ? 0 : ms / 1000,
-    ease: 'power3.out',
+    ease: 'power3.inOut',
     overwrite: 'auto',
     onUpdate: () => { viewY = state.value; },
     onComplete: () => { _yAnim = null; },
@@ -109,14 +113,23 @@ let hintTimer = null, hintActive = null, hintStart = 0;
 const DRAG_LIFT = 0.22;    // detached height after a deliberate peel
 const REST_LIFT = 0.025;   // depth-safe resting gap above the pole surface
 const FOCUS_LIFT = REST_LIFT + 0.11;
-const PEEL_START = 0.20;   // clearly visible edge curl on pointer-down
-const PEEL_DISTANCE = 150; // longer tactile peel before flat drag takes over
-const PEEL_DETACH = 0.84;  // curl becomes a free, flat sticker after this point
-let container, modalApi, tagEl;
+let container, modalApi, tagEl, peeledStickerForDetail = null;
+let stickerForge = null, stickerForgeHost = null, stickerForgeTarget = null;
+let stickerForgeFallOffset = null;
+let stickerForgeHoverScale = 1;
+let stickerForgeEntry = null, stickerForgeTimeline = null, stickerForgeGeneration = 0;
+let stickerForgeScaleTween = null;
+let stickerForgeModulePromise = null;
+let stickerForgeDisplay = null;
+let stickerForgeEntranceDuration = 720;
+let stickerForgeBounds = null;
+let stickerForgeFallRoom = false;
+const stickerForgeImageCache = new Map();
+let peelDetailOpenTimer = null;
 
 /* ---------- loading manager + reveal (intro animation) state ---------- */
 let onProgressCb = null, onReadyCb = null;
-let mgrBusy = false, stickersAdded = false, revealed = false;
+let mgrBusy = false, stickersAdded = false, stickerDataReady = false, revealed = false;
 let _revealPose = null;
 const loadMgr = new THREE.LoadingManager();
 loadMgr.onStart = () => { mgrBusy = true; };
@@ -145,7 +158,7 @@ poleMat.userData.goboRepeat = { value: new THREE.Vector2(1.0, 1.0) }; // smaller
 poleMat.userData.goboOffset = { value: new THREE.Vector2(0, 0) };
 poleMat.userData.goboTime = { value: 0 };
 poleMat.userData.goboMap = { value: null };
-poleMat.userData.goboIntensity = { value: 0.2 }; // 揭幕时从暗渐亮到 1.7（见 startReveal）
+poleMat.userData.goboIntensity = { value: 1.7 }; // Keep the forest light balanced without an intro tween.
 
 poleMat.onBeforeCompile = (shader) => {
   shader.uniforms.goboRepeat = poleMat.userData.goboRepeat;
@@ -290,6 +303,7 @@ const stickerFrag = `
   uniform float time;
   uniform float appear;
   uniform float reflectStrength;
+  uniform float stickerOpacity;
   varying vec2 vUv;
   varying vec3 vWorldPos;
   varying vec3 vWorldNormal;
@@ -322,7 +336,7 @@ const stickerFrag = `
     // Only add gobo spots on front face - nothing else changed
     c.rgb += (currentIntensity - 1.0) * lightIntensity * (1.0 - c.rgb) * sunColor * goboMask;
 
-    c.a *= smoothstep(0.0, 0.35, appear);
+    c.a *= smoothstep(0.0, 0.35, appear) * stickerOpacity;
     // Satin laminate reflection: a broad view-dependent band plus a small
     // directional highlight. The artwork remains legible instead of being
     // uniformly washed out, and the sheen travels as the camera/pole moves.
@@ -404,7 +418,6 @@ export function initRoom(opts) {
   onProgressCb = opts.onProgress || null;
   onReadyCb    = opts.onReady    || null;
   tagEl     = document.getElementById('sticker-tag');
-
   scene = new THREE.Scene();
 
   // High-contrast directional and ambient light rig (lower ambient, stronger key)
@@ -433,9 +446,10 @@ export function initRoom(opts) {
   pointer = new THREE.Vector2();
 
   bindEvents();
-  // 白屏开场期间不渲染被遮住的场景（开场卡顿来源之一）；
-  // 纹理加载回调里的 renderOnce 仍会预热 GPU 上传，startReveal 时 resume()。
-  isPaused = true;
+  window.addEventListener('room:detailclosed', restorePeeledSticker);
+  // Render immediately; texture callbacks replace the temporary materials as
+  // assets arrive, so a failed/slow asset can never trap the page behind a loader.
+  isPaused = false;
   animate();
 }
 
@@ -537,8 +551,25 @@ function getPoleSurface(theta, y, out, lift) {
 
 /* ---- build a curved sticker geometry (subdivided, follows cylinder) ---- */
 const _surf = { pos: new THREE.Vector3(), normal: new THREE.Vector3() };
-function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn, peelEntry) {
-  const N = 28;
+const STICKER_GRID = 40;
+const STICKER_GRID_INDEX = (() => {
+  const idx = new Uint16Array(STICKER_GRID * STICKER_GRID * 6);
+  let k = 0;
+  for (let j = 0; j < STICKER_GRID; j++) {
+    for (let i = 0; i < STICKER_GRID; i++) {
+      const a = j * (STICKER_GRID + 1) + i;
+      const b = a + 1, c = a + STICKER_GRID + 1, d = c + 1;
+      idx[k++] = a; idx[k++] = c; idx[k++] = b;
+      idx[k++] = b; idx[k++] = c; idx[k++] = d;
+    }
+  }
+  return idx;
+})();
+// Three.js expects a BufferAttribute (or a plain JS array) here, not a bare
+// typed array. Keep the immutable index buffer wrapped and share it safely.
+const STICKER_GRID_INDEX_ATTRIBUTE = new THREE.BufferAttribute(STICKER_GRID_INDEX, 1);
+function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn, _peelEntry, targetGeometry) {
+  const N = STICKER_GRID;
   const ar = (typeof aspect === 'number' && aspect > 0) ? aspect : 1;
   // Geometry is grown by `m` on each side; UVs are remapped so the texture's
   // [0,1] maps to the inner region. The margin area (UV outside [0,1]) is
@@ -546,72 +577,31 @@ function buildStickerGeometry(thetaC, yC, S, lift, aspect, marginIn, peelEntry) 
   const m  = (typeof marginIn === 'number') ? marginIn : 0.08;
   const sw = S       * (1 + 2 * m);
   const sh = (S / ar) * (1 + 2 * m);
-  const arcHalf = (sw / 2) / CFG.poleRadius;
-  const pos = new Float32Array((N+1)*(N+1)*3);
-  const uvs = new Float32Array((N+1)*(N+1)*2);
+  const pos = targetGeometry?.attributes.position.array || new Float32Array((N+1)*(N+1)*3);
+  const uvs = targetGeometry?.attributes.uv.array || new Float32Array((N+1)*(N+1)*2);
   let p = 0, q = 0;
   for (let j = 0; j <= N; j++) {
     for (let i = 0; i <= N; i++) {
       const fx = i / N, fy = j / N;
-      const theta = thetaC + (fx - 0.5) * 2 * arcHalf;
-      const y     = yC     + (0.5 - fy) * sh;
+      const localX = (fx - 0.5) * sw;
+      const localY = (0.5 - fy) * sh;
+      const theta = thetaC + localX / CFG.poleRadius;
+      const y = yC + localY;
       getPoleSurface(theta, y, _surf, lift);
-      // Sticker-Forge-inspired edge peel, adapted to the shared cylindrical
-      // mesh. Only the strip nearest the grabbed edge bends; the remainder
-      // stays rigidly attached to the pole.
-      const peel = peelEntry ? clamp(peelEntry.peel || 0, 0, 1) : 0;
-      if (peel > 0.001 && peelEntry.peelEdge) {
-        const edge = peelEntry.peelEdge;
-        const horizontal = edge === 'left' || edge === 'right';
-        const span = horizontal ? sw : sh;
-        const d = edge === 'left' ? fx * sw
-          : edge === 'right' ? (1 - fx) * sw
-          : edge === 'top' ? fy * sh
-          : (1 - fy) * sh;
-        const extent = span * (0.085 + 0.44 * peel);
-        if (d < extent) {
-          const qPeel = extent - d;
-          // Keep the fold below 90 degrees. Beyond that point the sampled
-          // columns reverse direction and overlap like venetian blinds,
-          // which is the source of the visible vertical strip artifact.
-          // Full removal is represented by the dedicated flat mesh instead.
-          const maxAngle = 0.12 + peel * 1.18;
-          const aPeel = (qPeel / extent) * maxAngle;
-          const radius = extent / maxAngle;
-          const tangentShift = qPeel - radius * Math.sin(aPeel);
-          // Emphasise height rather than rotation: the edge reads as peeled
-          // without ever approaching the self-intersection angle.
-          const edgeWeight = qPeel / extent;
-          const normalLift = radius * (1 - Math.cos(aPeel)) * 1.9
-            + edgeWeight * edgeWeight * peel * 0.09;
-          if (horizontal) {
-            const sign = edge === 'left' ? 1 : -1;
-            _surf.pos.x += Math.cos(theta) * tangentShift * sign + _surf.normal.x * normalLift;
-            _surf.pos.z += -Math.sin(theta) * tangentShift * sign + _surf.normal.z * normalLift;
-          } else {
-            _surf.pos.y += tangentShift * (edge === 'top' ? -1 : 1);
-            _surf.pos.x += _surf.normal.x * normalLift;
-            _surf.pos.z += _surf.normal.z * normalLift;
-          }
-        }
-      }
       pos[p++] = _surf.pos.x; pos[p++] = _surf.pos.y; pos[p++] = _surf.pos.z;
       const u = fx       * (1 + 2 * m) - m;
       const v = (1 - fy) * (1 + 2 * m) - m;
       uvs[q++] = u; uvs[q++] = v;
     }
   }
-  const idx = [];
-  for (let j = 0; j < N; j++) {
-    for (let i = 0; i < N; i++) {
-      const a = j*(N+1) + i, b = a + 1, c2 = a + (N+1), d = c2 + 1;
-      idx.push(a, c2, b,  b, c2, d);
-    }
+  const g = targetGeometry || new THREE.BufferGeometry();
+  if (!targetGeometry) {
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    g.setIndex(STICKER_GRID_INDEX_ATTRIBUTE);
+  } else {
+    g.attributes.position.needsUpdate = true;
   }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-  g.setIndex(idx);
   g.computeVertexNormals();
   g.computeBoundingSphere();
   return g;
@@ -638,6 +628,7 @@ export function addStickers(list) {
     console.error('[room3d] STICKERS_DATA missing/empty:', list);
     return;
   }
+  const firstStickerBatch = !stickersAdded;
   const isPhone = (container.clientWidth || window.innerWidth) < 720;
   // Keep the two families visually close without letting extreme image ratios
   // create oversized banners. The value is the target maximum world dimension.
@@ -753,13 +744,12 @@ export function addStickers(list) {
         lightMapIntensity: { value: 1.45 },
         time: stickerTimeUniform,
         appear: { value: revealed ? 1 : 0 },
-        reflectStrength: { value: 0.72 }
+        reflectStrength: { value: 0.72 },
+        stickerOpacity: { value: 1.0 },
       },
       vertexShader: stickerVert, fragmentShader: stickerFrag,
       transparent: true, depthWrite: false, depthTest: true,
-      // Keep the artwork single-sided so foreground promotion never exposes
-      // its untextured back when the camera orbits behind the pole.
-      side: THREE.FrontSide
+      side: THREE.DoubleSide
     });
 
     const shMat = new THREE.ShaderMaterial({
@@ -790,7 +780,7 @@ export function addStickers(list) {
     flat.visible = false;
     flat.renderOrder = 1000;
     world.add(flat);
-    stickers.push({ mesh, flat, shMesh, data: d, theta, y, S, lift: REST_LIFT, peel: 0, peelEdge: null, detached: false, aspect: 1, appear: revealed ? 1 : 0, baseRenderOrder: mesh.renderOrder });
+    stickers.push({ mesh, flat, shMesh, data: d, theta, y, S, lift: REST_LIFT, peel: 0, peelTension: 0, peelEdge: null, detached: false, aspect: 1, appear: revealed ? 1 : 0, baseRenderOrder: mesh.renderOrder });
   });
   // Aim the camera at whichever side of the pole has the most stickers, so
   // the first paint never lands on an empty back. During the intro the camera
@@ -798,19 +788,27 @@ export function addStickers(list) {
   const best = densestPose();
   if (best) {
     // Keep the existing camera-selection behavior; only sticker start
-    // coordinates are authored in defaultLayout below.
-    _revealPose = { angle: best.angle - 0.22, y: best.y + 0.5 };
-    const safe = (typeof container !== 'undefined' && container)
-      ? safeViewYRange() : CFG.viewYRange;
-    cameraAngle = _revealPose.angle - 0.55;
-    viewY = clamp(_revealPose.y + 2.0, -safe, safe);
+    // coordinates are authored in defaultLayout below. Start visibly away
+    // from the final composition so the intro orbit has a real, smooth arc.
+    _revealPose = { angle: best.angle, y: best.y };
+    const safe = safeViewYRange();
+    cameraAngle = _revealPose.angle - 0.58;
+    viewY = clamp(_revealPose.y + 1.15, -safe, safe);
   }
   renderOnce();
   stickersAdded = true;
   maybeReveal();
   // Kick off the click-hint loop on first paint (unless the visitor has
   // already tapped a sticker in a previous session).
-  scheduleHint(1200);
+  if (firstStickerBatch) scheduleHint(2500);
+}
+
+// The homepage waits for both project data and the IP manifest to be
+// registered before beginning its reveal. TextureLoader then gates the reveal
+// on every registered image and room texture finishing (or failing) to load.
+export function finishStickerRegistration() {
+  stickerDataReady = true;
+  maybeReveal();
 }
 
 /* ============ CLICK HINT ============ */
@@ -982,9 +980,8 @@ function rebuild(entry) {
   const safeLift = Math.max(REST_LIFT, entry.lift);
   // sticker (margin a little wider so outline can spill past the artwork)
   const g = buildStickerGeometry(
-    entry.theta, entry.y, entry.S, safeLift, entry.aspect, 0.08, entry
+    entry.theta, entry.y, entry.S, safeLift, entry.aspect, 0.08, entry, entry.mesh.geometry
   );
-  entry.mesh.geometry.dispose();
   entry.mesh.geometry = g;
   // shadow — almost-touching contact shadow that softens with blur, not by
   // moving away. As lift grows (drag), it drops slightly + softens further.
@@ -994,12 +991,12 @@ function rebuild(entry) {
     const scale = 1.04 + safeLift * 0.10 + peelAmount * 0.035;
     // wider margin on shadow so the blur tail can fade past the artwork
     const sg = buildStickerGeometry(
-      entry.theta, entry.y + yOff, entry.S * scale, 0.001, entry.aspect, 0.18
+      entry.theta, entry.y + yOff, entry.S * scale, 0.001, entry.aspect, 0.18, entry,
+      entry.shMesh.geometry.attributes.position ? entry.shMesh.geometry : undefined
     );
-    entry.shMesh.geometry.dispose();
     entry.shMesh.geometry = sg;
     const u = entry.shMesh.material.uniforms;
-    u.strength.value = 0.35 - safeLift * 0.18 - peelAmount * 0.10;
+    u.strength.value = 0.35 - safeLift * 0.18 - peelAmount * 0.22;
     u.blurPx.value   = 10.0 + safeLift * 14.0 + peelAmount * 9.0;
   }
 }
@@ -1139,6 +1136,30 @@ function finishPeelAudio(detached) {
   // actively being peeled from the pole.
   peelAudioState = null;
 }
+function beginStickerForgeClickSound() {
+  // Reuse Sticker Forge's own sampled peel sound, but keep the scripted click
+  // interaction clean: only fire its short, crisp finish slice at full peel.
+  const audio = stickerForge?.renderer?.peelAudio;
+  if (!audio) return null;
+  // Going through setOptions lets the library select its embedded audio sprite
+  // (the raw source URL is intentionally private to the bundle).
+  stickerForge.setOptions({ sound: { enabled: true, volume: 0.7 } });
+  audio.unlock();
+  audio.begin(0, performance.now());
+  return audio;
+}
+function finishStickerForgeClickSound(audio) {
+  if (!audio) return;
+  // The quick progress jump crosses Sticker Forge's detach threshold and
+  // triggers its bundled finish sample; no synthesized rubbing grains.
+  audio.update(1, performance.now(), 0);
+  audio.end(1);
+  // Let the short finish sample play out. Disabling audio immediately calls
+  // Sticker Forge's reset path, which stops the voice before the first frame.
+  setTimeout(() => {
+    stickerForge?.setOptions({ sound: { enabled: true, volume: 0 } });
+  }, 180);
+}
 
 /* ============ INTERACTION ============ */
 let lastTapAt = 0;     // for double-tap detection on empty space
@@ -1222,7 +1243,16 @@ function onDown(e) {
   if (_yAnim) { _yAnim.kill(); _yAnim = null; }
   setPointer(e);
   raycaster.setFromCamera(pointer, camera);
-  const picked = pickStickerByAlpha();
+  const roomRect = container.getBoundingClientRect();
+  const pointX = e.clientX - roomRect.left;
+  const pointY = e.clientY - roomRect.top;
+  const forgeOwnsHit = stickerForgeEntry && stickerForgeBounds
+    && stickerForgeHost?.style.display !== 'none'
+    && pointX >= stickerForgeBounds.left && pointX <= stickerForgeBounds.left + stickerForgeBounds.width
+    && pointY >= stickerForgeBounds.top && pointY <= stickerForgeBounds.top + stickerForgeBounds.height;
+  // The source mesh is hidden while Sticker Forge renders the peeled sheet;
+  // continue treating that on-screen sheet as the draggable/clickable target.
+  const picked = forgeOwnsHit ? stickerForgeEntry : pickStickerByAlpha();
   downPos = { x: e.clientX, y: e.clientY };
   try { renderer.domElement.setPointerCapture(e.pointerId); } catch (err) {}
   if (picked) {
@@ -1235,25 +1265,20 @@ function onDown(e) {
     dragging._touch = (e.pointerType === 'touch');
     dragging._targetTheta = picked.theta;
     dragging._targetY = picked.y;
-    dragging._targetPeel = PEEL_START;
+    dragging.peel = 0;
+    dragging._targetPeel = 0;
     dragging.detached = false;
-    const uv = picked._pickUv || { x: 0.5, y: 0.5 };
-    const edgeDistances = [
-      ['left', uv.x], ['right', 1 - uv.x],
-      ['bottom', uv.y], ['top', 1 - uv.y]
-    ];
-    edgeDistances.sort((a, b) => a[1] - b[1]);
-    dragging.peelEdge = edgeDistances[0][0];
-    startPeelAudio(e);
+    dragging.peelEdge = null;
     const surfaceHit = raycaster.intersectObject(pole, false)[0];
     const hitTheta = surfaceHit ? Math.atan2(surfaceHit.point.x, surfaceHit.point.z) : picked.theta;
     dragging._grabThetaOffset = shortestAngleDelta(picked.theta, hitTheta);
     dragging._grabYOffset = surfaceHit ? picked.y - surfaceHit.point.y : 0;
-    gsap.killTweensOf(dragging, 'lift,peel');
+    gsap.killTweensOf(dragging, 'lift,peel,peelTension');
+    dragging.peelTension = 0;
     const pressed = dragging;
     gsap.to(pressed, {
-      lift: 0.018,
-      peel: PEEL_START,
+      lift: REST_LIFT,
+      peel: 0,
       duration: reducedMotion() ? 0 : 0.13,
       ease: 'power2.out',
       overwrite: 'auto',
@@ -1317,11 +1342,7 @@ function onMove(e) {
   if (!dragging) return;
   const pointerTravel = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
   if (pointerTravel > 6) dragMoved = true;
-  dragging._targetPeel = clamp(PEEL_START + pointerTravel / PEEL_DISTANCE, PEEL_START, 1);
-  if (!dragging.detached) {
-    playPeelAudio(e, dragging._targetPeel);
-    if (dragging._targetPeel >= PEEL_DETACH) detachSticker(dragging);
-  }
+  dragging._targetPeel = 0;
   // Keep the camera still and map the pointer directly onto the pole. The
   // original pickup offset prevents the sticker jumping under the cursor.
   setPointer(e);
@@ -1411,11 +1432,13 @@ function onUp(e = {}, cancelled = false) {
     // First sticker tap — dismiss the click-hint loop permanently.
     try { localStorage.setItem(HINT_KEY, '1'); } catch (_) {}
     stopHint();
-    modalApi.open(dragging.data);
+    dragging = null;
+    finishPeelAudio(false);
+    animateStickerPeelToDetail(released);
+    return;
   }
-  // End curl deformation before showing the curved mesh again. Keeping a
-  // partly folded subdivided mesh during reattachment can make neighbouring
-  // triangles self-intersect and appear as vertical image strips.
+  // Moving is a surface-only gesture. A sticker remains attached to the
+  // cylinder throughout; a tap opens its project detail page.
   if (released.detached) {
     released.flat.visible = false;
     released.detached = false;
@@ -1428,8 +1451,9 @@ function onUp(e = {}, cancelled = false) {
   // hide the flat preview, restore the curved sticker on the cylinder
   if (released.shMesh) released.shMesh.visible = true;
   released.mesh.visible = true;
-  finishPeelAudio(dragMoved);
-  gsap.killTweensOf(released, 'lift,peel');
+  finishPeelAudio(false);
+  gsap.killTweensOf(released, 'lift,peel,peelTension');
+  released.peelTension = 0;
   // Geometry is rebuilt exactly once at its final safe radius. Reattachment
   // feedback is material-only, so no transition frame can expose mesh strips.
   const reflectUniform = released.mesh.material.uniforms.reflectStrength;
@@ -1509,14 +1533,373 @@ function scheduleHoverFocus(entry, event) {
     focusedSticker = entry;
     focusedPointer = pointerAtIntent;
     tagEl.classList.add('anchored');
-    setFocusedStickerLift(entry, true);
     window.dispatchEvent(new CustomEvent('room:stickerfocus', {
       detail: { id: entry.data.id, kind: entry.data.kind || 'project', sticker: entry.data }
     }));
     const safe = safeViewYRange();
     tweenCameraAngle(entry.theta, 480);
     if (Math.abs(entry.y) <= safe) tweenViewY(entry.y, 480);
+    gsap.delayedCall(reducedMotion() ? 0 : 0.5, () => {
+      if (focusedSticker === entry && hoverFocusTarget === entry && !dragging) animateHoverFocus(entry);
+    });
   }, HOVER_FOCUS_DELAY);
+}
+function choosePeelEdge(entry) {
+  const uv = entry._pickUv || { x: 0.5, y: 0.5 };
+  const edges = [['left', uv.x], ['right', 1 - uv.x], ['bottom', uv.y], ['top', 1 - uv.y]];
+  edges.sort((a, b) => a[1] - b[1]);
+  return edges[0][0];
+}
+const _forgeWorld = new THREE.Vector3();
+const _forgeSurface = { pos: new THREE.Vector3(), normal: new THREE.Vector3() };
+function forgeProject(theta, y, xOffset = 0, yOffset = 0, lift = FOCUS_LIFT) {
+  getPoleSurface(theta + xOffset / CFG.poleRadius, y + yOffset, _forgeSurface, lift);
+  _forgeWorld.copy(_forgeSurface.pos).project(camera);
+  const rect = container.getBoundingClientRect();
+  return {
+    x: (0.5 + _forgeWorld.x * 0.5) * rect.width,
+    y: (0.5 - _forgeWorld.y * 0.5) * rect.height
+  };
+}
+function positionStickerForge(entry, allowFall = stickerForgeFallRoom) {
+  if (!stickerForgeTarget || !entry || !container) return;
+  const h = entry.S / Math.max(entry.aspect || 1, 0.01);
+  const lift = entry.lift ?? REST_LIFT;
+  const center = forgeProject(entry.theta, entry.y, 0, 0, lift);
+  const left = forgeProject(entry.theta, entry.y, -entry.S / 2, 0, lift);
+  const right = forgeProject(entry.theta, entry.y, entry.S / 2, 0, lift);
+  const top = forgeProject(entry.theta, entry.y, 0, h / 2, lift);
+  const bottom = forgeProject(entry.theta, entry.y, 0, -h / 2, lift);
+  const width = Math.max(24, Math.hypot(right.x - left.x, right.y - left.y));
+  const height = Math.max(24, Math.hypot(bottom.x - top.x, bottom.y - top.y));
+  const rotation = Math.atan2(right.y - left.y, right.x - left.x) * 180 / Math.PI;
+  // During a peel, render into the viewport-sized canvas and offset the
+  // sticker inside Sticker Forge's scene. Oversized canvases hit GPU limits
+  // and create the rectangular crop seen on tall portrait stickers.
+  const rect = container.getBoundingClientRect();
+  if (allowFall) {
+    stickerForgeTarget.style.left = '0px';
+    stickerForgeTarget.style.top = '0px';
+    stickerForgeTarget.style.width = `${rect.width}px`;
+    stickerForgeTarget.style.height = `${rect.height}px`;
+    stickerForgeTarget.style.transform = 'none';
+    stickerForgeFallOffset = {
+      x: (center.x - rect.width / 2) * 2 / rect.height,
+      y: (rect.height / 2 - center.y) * 2 / rect.height,
+      rotation: rotation * Math.PI / 180
+    };
+  } else {
+    const canvasWidth = width * 1.5;
+    const canvasHeight = height * 1.5;
+    stickerForgeTarget.style.left = `${center.x - canvasWidth / 2}px`;
+    stickerForgeTarget.style.top = `${center.y - canvasHeight / 2}px`;
+    stickerForgeTarget.style.width = `${canvasWidth}px`;
+    stickerForgeTarget.style.height = `${canvasHeight}px`;
+    stickerForgeTarget.style.transform = `rotate(${rotation}deg) scale(${stickerForgeHoverScale})`;
+    stickerForgeFallOffset = null;
+  }
+  const radians = rotation * Math.PI / 180;
+  const boundWidth = Math.abs(width * Math.cos(radians)) + Math.abs(height * Math.sin(radians));
+  const boundHeight = Math.abs(width * Math.sin(radians)) + Math.abs(height * Math.cos(radians));
+  stickerForgeBounds = {
+    left: center.x - boundWidth / 2,
+    top: center.y - boundHeight / 2,
+    width: boundWidth,
+    height: boundHeight
+  };
+  if (stickerForge && (!stickerForgeDisplay
+    || Math.abs(stickerForgeDisplay.width - width) > 1.5
+    || Math.abs(stickerForgeDisplay.height - height) > 1.5)) {
+    stickerForgeDisplay = { width, height };
+    stickerForge.setOptions({ display: stickerForgeDisplay });
+  }
+}
+function ensureStickerForgeLayer() {
+  if (stickerForgeHost) return;
+  stickerForgeHost = document.createElement('div');
+  stickerForgeHost.className = 'sticker-forge-overlay';
+  stickerForgeTarget = document.createElement('div');
+  stickerForgeTarget.className = 'sticker-forge-target';
+  stickerForgeHost.appendChild(stickerForgeTarget);
+  container.appendChild(stickerForgeHost);
+}
+function stickerForgeMotion(entry) {
+  const edge = choosePeelEdge(entry);
+  const pairs = {
+    left: [{ x: 0, y: 0.5 }, { x: 1, y: 0.5 }],
+    right: [{ x: 1, y: 0.5 }, { x: 0, y: 0.5 }],
+    top: [{ x: 0.5, y: 0 }, { x: 0.5, y: 1 }],
+    bottom: [{ x: 0.5, y: 1 }, { x: 0.5, y: 0 }]
+  };
+  const [origin, target] = pairs[edge];
+  return { origin, target };
+}
+async function showStickerForge(entry, { allowFall = false, preserveBase = false } = {}) {
+  ensureStickerForgeLayer();
+  const generation = ++stickerForgeGeneration;
+  stickerForgeFallRoom = allowFall;
+  stickerForgeTimeline?.kill();
+  stickerForgeTimeline = null;
+  stickerForgeHost.style.display = 'block';
+  stickerForgeTarget.style.opacity = '0';
+  stickerForgeTarget.style.display = 'block';
+  positionStickerForge(entry);
+  stickerForgeModulePromise ||= stickerForgeModule();
+  const forge = await stickerForgeModulePromise;
+  stickerForgeEntranceDuration = forge.STICKER_ENTRANCE_DURATION_MS || 720;
+  if (generation !== stickerForgeGeneration) return false;
+  const src = await resolveStickerForgeImage(entry.data.sticker);
+  if (generation !== stickerForgeGeneration) return false;
+  if (!stickerForge) {
+    stickerForge = await forge.createSticker(stickerForgeTarget, {
+      // The pole artwork already includes its own transparent silhouette.
+      // Sticker Forge's default 144px padding changes the visible scale on
+      // the overlay and makes the sticker pop larger when the 3D mesh returns.
+      source: { type: 'image', src, padding: 0 },
+      outline: { width: 0, color: '#ffffff' },
+      edge: { width: 1.2, strength: 0.45 },
+      shadow: { opacity: 0.3, blur: 18, distance: 12, angle: 42 },
+      peel: { radius: 0.12, stiffness: 0.72, maxAngle: 3.55, residue: true, surfaceShadow: true },
+      // Preload Sticker Forge's bundled peel sample while keeping it inaudible
+      // outside an explicit click-to-peel interaction.
+      sound: { enabled: true, volume: 0 },
+      material: { type: 'original', intensity: 0 },
+      display: stickerForgeDisplay || undefined,
+      quality: allowFall ? 'low' : 'high',
+      tilt: 0
+    });
+  } else if (stickerForgeSource !== src) {
+    await stickerForge.setSource({ type: 'image', src, padding: 0 });
+  }
+  if (generation !== stickerForgeGeneration) return false;
+  stickerForge.setOptions({ quality: allowFall ? 'low' : 'high' });
+  stickerForgeSource = src;
+  stickerForgeEntry = entry;
+  positionStickerForge(entry);
+  stickerForgeTarget.style.opacity = preserveBase ? '0' : '1';
+  if (entry.mesh.material.uniforms.stickerOpacity) entry.mesh.material.uniforms.stickerOpacity.value = 1;
+  if (!preserveBase) {
+    entry.mesh.visible = false;
+    if (entry.shMesh) entry.shMesh.visible = false;
+  }
+  return true;
+}
+let stickerForgeSource = null;
+async function resolveStickerForgeImage(path) {
+  const url = new URL(path, document.baseURI).href;
+  if (location.protocol !== 'file:') return url;
+  if (stickerForgeImageCache.has(url)) return stickerForgeImageCache.get(url);
+  const dataUrlPromise = new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const scale = Math.min(1, 1024 / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (error) { reject(error); }
+    };
+    image.onerror = () => reject(new Error(`Could not load sticker image: ${path}`));
+    image.src = url;
+  });
+  stickerForgeImageCache.set(url, dataUrlPromise);
+  while (stickerForgeImageCache.size > 3) {
+    stickerForgeImageCache.delete(stickerForgeImageCache.keys().next().value);
+  }
+  try { return await dataUrlPromise; }
+  catch (error) { stickerForgeImageCache.delete(url); throw error; }
+}
+function hideStickerForge(entry = stickerForgeEntry, keepOriginalHidden = false) {
+  ++stickerForgeGeneration;
+  stickerForgeTimeline?.kill();
+  stickerForgeTimeline = null;
+  stickerForgeScaleTween?.kill();
+  stickerForgeScaleTween = null;
+  if (stickerForge) stickerForge.reset();
+  if (stickerForgeTarget) {
+    stickerForgeTarget.style.opacity = '1';
+    stickerForgeTarget.style.display = 'none';
+  }
+  if (stickerForgeHost) stickerForgeHost.style.display = 'none';
+  stickerForgeFallOffset = null;
+  stickerForgeHoverScale = 1;
+  if (stickerForge && !keepOriginalHidden) stickerForge.setOptions({ quality: 'high' });
+  stickerForgeFallRoom = false;
+  if (entry && !keepOriginalHidden) {
+    if (entry.mesh.material.uniforms.stickerOpacity) entry.mesh.material.uniforms.stickerOpacity.value = 1;
+    entry.mesh.visible = true;
+    if (entry.shMesh) entry.shMesh.visible = true;
+  }
+  if (!keepOriginalHidden) stickerForgeEntry = null;
+}
+async function animateHoverFocus(entry) {
+  if (!entry || entry.detached || !entry.mesh.visible) return;
+  let ready = false;
+  // Hide the cylinder sticker for the entire Forge entrance. It is restored
+  // only during the short cross-fade back after the motion has completed.
+  try { ready = await showStickerForge(entry); }
+  catch (error) {
+    console.error('[Sticker Forge] Could not prepare hover animation:', error);
+    hideStickerForge(entry);
+    return;
+  }
+  if (!ready || focusedSticker !== entry || (hoverFocusTarget !== entry && focusedPointer !== null)) {
+    hideStickerForge(entry);
+    return;
+  }
+  stickerForge.reset();
+  // Sticker Forge's entrance shader starts at 60% scale. Compensate on the
+  // transparent overlay so the first visible frame matches the cylinder
+  // sticker, then ease the compensation away with the entrance.
+  stickerForgeHoverScale = 1 / 0.6;
+  positionStickerForge(entry, false);
+  stickerForgeTarget.style.opacity = '1';
+  // The hover state only borrows Sticker Forge's final spring/laser entrance;
+  // it does not run the peel and reattach sequence.
+  stickerForge.reappear();
+  const scaleCompensation = { value: stickerForgeHoverScale };
+  stickerForgeScaleTween?.kill();
+  stickerForgeScaleTween = gsap.to(scaleCompensation, {
+    value: 1,
+    duration: reducedMotion() ? 0 : stickerForgeEntranceDuration / 1000,
+    ease: 'power2.out',
+    overwrite: 'auto',
+    onUpdate: () => {
+      stickerForgeHoverScale = scaleCompensation.value;
+      positionStickerForge(entry, false);
+    },
+    onComplete: () => {
+      stickerForgeHoverScale = 1;
+      positionStickerForge(entry, false);
+      stickerForgeScaleTween = null;
+    }
+  });
+  gsap.delayedCall(reducedMotion() ? 0 : stickerForgeEntranceDuration / 1000 + 0.08, () => {
+    if (focusedSticker === entry && stickerForgeEntry === entry) blendStickerForgeBack(entry);
+  });
+}
+function blendStickerForgeBack(entry) {
+  if (!stickerForgeTarget) {
+    hideStickerForge(entry);
+    return;
+  }
+  const blend = { value: 0 };
+  entry.mesh.visible = true;
+  stickerForgeTimeline = gsap.to(blend, {
+    value: 1,
+    duration: reducedMotion() ? 0 : 0.18,
+    ease: 'power1.out',
+    onUpdate: () => {
+      stickerForgeTarget.style.opacity = String(1 - blend.value);
+    },
+    onComplete: () => {
+      if (entry.shMesh) entry.shMesh.visible = true;
+      hideStickerForge(entry);
+    }
+  });
+}
+async function animateStickerPeelToDetail(entry) {
+  let clickPeelAudio = beginStickerForgeClickSound();
+  peeledStickerForDetail = entry;
+  clearTimeout(peelDetailOpenTimer);
+  peelDetailOpenTimer = setTimeout(() => openPeeledDetail(entry), 2800);
+  let ready = false;
+  try { ready = await showStickerForge(entry, { allowFall: true }); }
+  catch (error) {
+    console.error('[Sticker Forge] Could not prepare peel animation:', error);
+    hideStickerForge(entry);
+    openPeeledDetail(entry);
+    return;
+  }
+  if (!ready) return;
+  // On first touch there may not be a Forge instance until this point.
+  if (!clickPeelAudio) clickPeelAudio = beginStickerForgeClickSound();
+  stickerForge.reset();
+  const initial = stickerForge.getRenderSnapshot();
+  if (stickerForgeFallOffset) {
+    stickerForge.setRenderSnapshot({
+      ...initial,
+      position: { x: stickerForgeFallOffset.x, y: stickerForgeFallOffset.y },
+      rotation: stickerForgeFallOffset.rotation
+    });
+  }
+  const motion = stickerForgeMotion(entry);
+  const progress = { value: 0 };
+  stickerForgeTimeline = gsap.to(progress, {
+    value: 1,
+    duration: reducedMotion() ? 0 : 0.62,
+    ease: 'power2.inOut',
+    onUpdate: () => {
+      if (!stickerForge) return;
+      stickerForge.setPeelProgress(progress.value, motion);
+      if (stickerForgeFallOffset) {
+        const snapshot = stickerForge.getRenderSnapshot();
+        stickerForge.setRenderSnapshot({
+          ...snapshot,
+          position: { x: stickerForgeFallOffset.x, y: stickerForgeFallOffset.y },
+          rotation: stickerForgeFallOffset.rotation
+        });
+      }
+    },
+    onComplete: () => {
+      finishStickerForgeClickSound(clickPeelAudio);
+      const snapshot = stickerForge.getRenderSnapshot();
+      const fall = { y: snapshot.position.y, x: snapshot.position.x, spin: snapshot.rotation, scale: 1, opacity: 1 };
+      stickerForgeTimeline = gsap.to(fall, {
+        y: fall.y - Math.max(1.7, entry.S * 0.9),
+        x: fall.x + 0.18,
+        spin: fall.spin + Math.PI * 0.7,
+        scale: 0.12,
+        opacity: 0,
+        duration: reducedMotion() ? 0 : 0.54,
+        ease: 'power2.in',
+        onUpdate: () => {
+          stickerForge?.setRenderSnapshot({
+            ...snapshot,
+            position: { x: fall.x, y: fall.y },
+            scale: { x: fall.scale, y: fall.scale },
+            rotation: fall.spin
+          });
+          if (stickerForgeTarget) stickerForgeTarget.style.opacity = String(fall.opacity);
+        },
+        onComplete: () => {
+          openPeeledDetail(entry);
+        }
+      });
+    }
+  });
+}
+function openPeeledDetail(entry) {
+  if (peeledStickerForDetail !== entry) return;
+  clearTimeout(peelDetailOpenTimer);
+  peelDetailOpenTimer = null;
+  hideStickerForge(entry, true);
+  entry.mesh.visible = false;
+  if (entry.shMesh) entry.shMesh.visible = false;
+  modalApi.open(entry.data);
+}
+function restorePeeledSticker() {
+  const entry = peeledStickerForDetail;
+  if (!entry) return;
+  clearTimeout(peelDetailOpenTimer);
+  peelDetailOpenTimer = null;
+  peeledStickerForDetail = null;
+  hideStickerForge(entry);
+  entry.peel = 0;
+  entry.peelTension = 0;
+  entry._targetPeel = 0;
+  entry.peelEdge = null;
+  entry.lift = REST_LIFT + 0.08;
+  rebuild(entry);
+  gsap.to(entry, {
+    lift: REST_LIFT,
+    duration: reducedMotion() ? 0 : 0.32,
+    ease: 'bounce.out',
+    overwrite: 'auto',
+    onUpdate: () => rebuild(entry)
+  });
 }
 function cancelHoverFocus() {
   clearTimeout(hoverFocusTimer);
@@ -1529,6 +1912,12 @@ function clearFocusedSticker() {
   focusedPointer = null;
   if (tagEl) tagEl.classList.remove('anchored');
   if (previous) {
+    if (stickerForgeEntry === previous && peeledStickerForDetail !== previous) hideStickerForge(previous);
+    gsap.killTweensOf(previous, 'peel,peelTension,lift');
+    previous.peel = 0;
+    previous.peelTension = 0;
+    previous.peelEdge = null;
+    rebuild(previous);
     setFocusedStickerLift(previous, false);
     window.dispatchEvent(new CustomEvent('room:stickerblur', {
       detail: { id: previous.data.id, kind: previous.data.kind || 'project' }
@@ -1608,8 +1997,11 @@ export function focusProject(id) {
     detail: { id: target.data.id, kind: target.data.kind || 'project', sticker: target.data }
   }));
   const safe = safeViewYRange();
-  tweenCameraAngle(target.theta, 720);
-  tweenViewY(clamp(target.y, -safe, safe), 720);
+  tweenCameraAngle(target.theta, 560);
+  tweenViewY(clamp(target.y, -safe, safe), 560);
+  gsap.delayedCall(reducedMotion() ? 0 : 0.58, () => {
+    if (focusedSticker === target && !dragging) animateHoverFocus(target);
+  });
   return true;
 }
 
@@ -1618,6 +2010,7 @@ function onResize() {
   const w = container.clientWidth, h = container.clientHeight;
   camera.aspect = w / h; camera.updateProjectionMatrix();
   renderer.setSize(w, h);
+  if (stickerForgeEntry) positionStickerForge(stickerForgeEntry);
 }
 function renderOnce() { if (renderer && scene && camera) renderer.render(scene, camera); }
 function animate() {
@@ -1634,6 +2027,7 @@ function animate() {
   stepDragFollow();
   baseCam();
   updateFocusedTag();
+  if (stickerForgeEntry && stickerForgeHost?.style.display !== 'none') positionStickerForge(stickerForgeEntry);
   renderer.render(scene, camera);
 }
 export function pause()  { isPaused = true; }
@@ -1669,7 +2063,7 @@ function stepDragFollow() {
   const dY = dragging._targetY - dragging.y;
   const peelGoal = dragging._targetPeel == null ? dragging.peel : dragging._targetPeel;
   const dPeel = peelGoal - dragging.peel;
-  const targetLift = 0.018 + Math.max(0, peelGoal - PEEL_START) * DRAG_LIFT;
+  const targetLift = REST_LIFT;
   const dLift = targetLift - dragging.lift;
   if (Math.abs(dTheta) < 0.0002 && Math.abs(dY) < 0.002
       && Math.abs(dPeel) < 0.002 && Math.abs(dLift) < 0.001) return;
@@ -1685,7 +2079,7 @@ function stepDragFollow() {
 // DOM 遮罩淡出（index.html 的 onReady），场景内相机环绕归位、
 // 树影光斑渐亮、贴纸逐个「啪」上电线杆。
 function maybeReveal() {
-  if (revealed || mgrBusy || !stickersAdded || !scene) return;
+  if (revealed || mgrBusy || !stickersAdded || !stickerDataReady || !scene) return;
   // onReadyCb 只通知页面「资源就绪」；何时揭幕由页面（loader 节奏）决定，
   // 页面再调 playReveal() 同步播放场景动画。没有回调则立即揭幕。
   if (onReadyCb) { onReadyCb(); return; }
@@ -1702,8 +2096,8 @@ function startReveal() {
   if (onReadyCb) onReadyCb();
   if (_revealPose) {
     const safe = safeViewYRange();
-    tweenCameraAngle(_revealPose.angle, 1800);
-    tweenViewY(clamp(_revealPose.y, -safe, safe), 1800);
+    tweenCameraAngle(_revealPose.angle, 1350);
+    tweenViewY(clamp(_revealPose.y, -safe, safe), 1350);
   }
   // 树影光斑像阳光一样渐亮；GSAP 统一 easing 与中断覆盖。
   const t0 = performance.now();
@@ -1715,7 +2109,7 @@ function startReveal() {
   // 贴纸错峰弹出
   stickers.forEach((s, i) => {
     if (s.appear >= 1) return;
-    s._appearAt = t0 + 350 + i * 90;
+    s._appearAt = t0 + 180 + i * 42;
   });
 }
 function backOut(k) {
