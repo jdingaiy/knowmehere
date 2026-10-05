@@ -21,14 +21,8 @@
 </head>
 <body>
 
-  <!-- ── LOADER: 白底开场（水注入 logo + 问候），资源就绪且动画播完后化作白雾 ── -->
-  <div id="loader" aria-hidden="true">
-    <div class="ld-center">
-      <video class="ld-video" id="ld-video" src="assets/loader/water-fill.webm"
-             autoplay muted playsinline preload="auto"></video>
-      <p class="ld-hi" id="ld-hi" aria-label="Hi, I'm Tan Jiaqi."></p>
-    </div>
-  </div>
+  <!-- ── LOADER: 磨砂白背景，主页资源就绪后渐清揭幕 ── -->
+  <div id="loader" aria-hidden="true"></div>
 
   <!-- ── TOP BAR: logo + tabs ── -->
   <nav class="ui-topbar" role="navigation" aria-label="页面切换">
@@ -780,39 +774,21 @@
     import { initRoom, addStickers, focusProject, pause, resume, playReveal } from './js/room3d.js?v=20260911-layer-fix';
     const container = document.getElementById('room-canvas');
 
-    // ── 开场 loader：水注入动画（~2.5s）+ 问候文字 → 停 1s → 化作白雾 ──
+    // ── 开场 loader：等待主页资源就绪，再渐清磨砂背景 ──
     const loaderEl = document.getElementById('loader');
-    const ldVideo  = document.getElementById('ld-video');
-    const ldHi     = document.getElementById('ld-hi');
-    // 逐字 spans，CSS 按 --i 错峰，总时长与视频一致
-    const HI_TXT = "Hi, I'm Tan Jiaqi.";
-    ldHi.innerHTML = [...HI_TXT].map((c, i) =>
-      `<span style="--i:${i}">${c === ' ' ? '&nbsp;' : c}</span>`).join('');
-    gsap.fromTo(ldHi.children,
-      { autoAlpha: 0, y: reduceMotion() ? 0 : 8 },
-      { autoAlpha: 1, y: 0, duration: reduceMotion() ? 0 : 0.42,
-        stagger: reduceMotion() ? 0 : 0.033, ease: 'power2.out' });
-
-    ldVideo.playbackRate = 2.5;        // 2.48s 的视频 ~1s 播完
-    let assetsReady = false, introDone = false, loaderGone = false;
+    let assetsReady = false, loaderGone = false;
     function tryExit() {
-      if (!assetsReady || !introDone || loaderGone) return;
+      if (!assetsReady || loaderGone) return;
       loaderGone = true;
       playReveal();                    // 场景揭幕（相机环绕/贴纸贴上/光斑渐亮）与白雾同步
       loaderEl.classList.add('done');
-      gsap.timeline({ onComplete: () => loaderEl.remove() })
-        .to('.ld-center', { autoAlpha: 0, duration: reduceMotion() ? 0 : 0.28, ease: 'power1.out' })
-        .to(loaderEl, { autoAlpha: 0, scale: reduceMotion() ? 1 : 1.06,
-          duration: reduceMotion() ? 0 : 0.82, ease: 'power2.inOut' }, '<0.08');
+      gsap.to(loaderEl, {
+        autoAlpha: 0,
+        duration: reduceMotion() ? 0 : 0.96,
+        ease: 'power2.out',
+        onComplete: () => loaderEl.remove(),
+      });
     }
-    function finishIntro() {
-      if (introDone) return;
-      introDone = true;
-      tryExit();                       // 不停留，直接散场
-    }
-    ldVideo.addEventListener('ended', finishIntro);
-    ldVideo.addEventListener('error', finishIntro);
-    setTimeout(finishIntro, 5000);     // 视频兜底：最多等 5s
     setTimeout(() => { assetsReady = true; tryExit(); }, 12000); // 资源兜底
 
     initRoom({
