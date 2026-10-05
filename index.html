@@ -858,6 +858,9 @@
           const pickCount = Math.min(pool.length, 2); // always 2 per IP
           const label = ip.label || IP_LABELS[ip.name] || ip.name;
           for (let i = 0; i < pickCount; i++) {
+            const teaserIndex = out.length;
+            const sideOffsets = [-0.62, 0.92, -0.34, 1.10, 0.48, -0.78];
+            const yPattern = [5.4, -3.8, 1.3, 4.2, -5.1, -0.3];
             out.push({
               id: `ip-${ip.name}-${i}`,
               kind: 'illustration-ip',     // tells modal to use the IP detail page
@@ -871,7 +874,11 @@
               subtitle: ip.subtitle || '', organization: ip.organization || '', heroEmoji: '✨',
               demoType: null, demoUrl: null,
               size: 'tiny',
-              ix: Math.random(), iy: Math.random(), rot: 0,
+              // Keep sides and distances intentionally varied rather than
+              // alternating by a fixed amount around the center.
+              initialTheta: sideOffsets[teaserIndex % sideOffsets.length],
+              initialY: yPattern[teaserIndex % yPattern.length],
+              rot: 0,
             });
           }
         }

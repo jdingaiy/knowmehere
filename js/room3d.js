@@ -784,9 +784,6 @@ export function addStickers(list) {
     const y = layout.y;
 
     const mesh = new THREE.Mesh(buildStickerGeometry(theta, y, S), mat);
-    // Illustration stickers form a quiet background layer. Project artwork is
-    // rendered above it so the first view reads as a coherent project cluster,
-    // while the IP drawings still peek through around the edges.
     mesh.renderOrder = d && d.kind === 'illustration-ip' ? 2 + i : 40 + i;
     world.add(mesh);
     const flat = new THREE.Mesh(buildFlatGeometry(S, 1, 0.08), mat);
@@ -800,8 +797,8 @@ export function addStickers(list) {
   // starts slightly rotated away / lower and tweens to this pose on reveal.
   const best = densestPose();
   if (best) {
-    // Bias the opening composition slightly toward the visual center of the
-    // sticker cluster. The navigation still uses the unmodified pose later.
+    // Keep the existing camera-selection behavior; only sticker start
+    // coordinates are authored in defaultLayout below.
     _revealPose = { angle: best.angle - 0.22, y: best.y + 0.5 };
     const safe = (typeof container !== 'undefined' && container)
       ? safeViewYRange() : CFG.viewYRange;
@@ -935,12 +932,40 @@ function defaultLayout(d, i) {
   if (d && d.kind === 'illustration-ip') {
     const ix = (typeof d.ix === 'number') ? d.ix : Math.random();
     const iy = (typeof d.iy === 'number') ? d.iy : Math.random();
-    const theta = (ix * 2 - 1) * 1.15;              // keep the first view clustered
-    // Half of viewYRange keeps every IP teaser visible from the default
-    // camera height — users don't need to pan to find them.
-    const y     = (iy * 2 - 1) * (CFG.viewYRange * 0.34);
+    const theta = typeof d.initialTheta === 'number'
+      ? d.initialTheta
+      : (ix * 2 - 1) * 1.15;
+    // Keep teaser art in outer left/right lanes. Project artwork occupies the
+    // narrow central band, leaving the side illustration area unobstructed.
+    const y = typeof d.initialY === 'number'
+      ? d.initialY
+      : (iy * 2 - 1) * (CFG.viewYRange * 0.34);
     return { theta, y };
   }
+  // Project stickers are placed in a compact vertical band near the front
+  // center, with alternating small offsets around the screenshot axis.
+  // Their geometry and pointer-driven drag behavior remain unchanged.
+  const authoredPositions = {
+    'shenghuoyin': { theta: -0.25, y: 7.4 },
+    'tashi': { theta: 0.12, y: 5.4 },
+    'zhihu-circle-ai': { theta: -0.08, y: 3.5 },
+    'gather': { theta: 0.31, y: 1.6 },
+    'ikea-aigc': { theta: -0.17, y: -0.2 },
+    'ikea-guide': { theta: 0.05, y: -2.0 },
+    'hci-studio': { theta: -0.36, y: -3.9 },
+    'sixteen': { theta: 0.22, y: -5.9 },
+    'nova-chat': { theta: -0.04, y: -7.8 },
+  };
+  if (authoredPositions[d && d.id]) return authoredPositions[d.id];
+  if (d && d.kind !== 'illustration-ip') {
+    const fallbackAngles = [-0.25, 0.12, -0.08, 0.31, -0.17, 0.05, -0.36, 0.22, -0.04];
+    const projectIndex = Math.floor(i / 2);
+    return {
+      theta: fallbackAngles[i % fallbackAngles.length],
+      y: 7.4 - projectIndex * 1.9,
+    };
+  }
+
   const cols = 4;
   const col = i % cols, row = Math.floor(i / cols);
   // Keep the cluster readable: neighboring stickers may kiss at an edge,
@@ -1620,13 +1645,12 @@ export function resume() {
 
 /* ============ STORAGE / UTILS ============ */
 function savePos(id, theta, y) {
-  try { localStorage.setItem('skP3_' + id, JSON.stringify({ theta, y })); } catch (e) {}
+  try { localStorage.setItem('skP8_' + id, JSON.stringify({ theta, y })); } catch (e) {}
 }
 function loadPos(id) {
-  // v3 intentionally invalidates the earlier, much more scattered layout.
-  // This makes the deployed first visit match the compact authored cluster
-  // even for people who dragged stickers in a previous release.
-  try { const r = localStorage.getItem('skP3_' + id); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+  // v8 resets the initial sticker arrangement once while retaining
+  // free drag positions saved after this update.
+  try { const r = localStorage.getItem('skP8_' + id); return r ? JSON.parse(r) : null; } catch (e) { return null; }
 }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 function shortestAngleDelta(target, start) {
