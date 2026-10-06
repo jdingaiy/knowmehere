@@ -278,10 +278,25 @@ body.modal-open .modal-close-btn { opacity: 1; pointer-events: auto; }
 .modal-body { padding: 0; }
 
 .dp-intro {
+  position: relative;
   max-width: 820px;
   padding: clamp(88px, 12vh, 132px) 32px 48px;
   margin: 0 auto;
 }
+.dp-intro-sticker {
+  position: absolute;
+  z-index: 2;
+  top: clamp(0px, 1vw, 14px);
+  right: clamp(28px, 7vw, 86px);
+  width: clamp(136px, 18vw, 232px);
+  height: auto;
+  object-fit: contain;
+  opacity: .92;
+  transform: rotate(7deg);
+  pointer-events: none;
+  user-select: none;
+}
+.dp-intro > :not(.dp-intro-sticker) { position: relative; z-index: 1; }
 .dp-intro .dp-kicker {
   margin: 0 0 12px;
   color: var(--ink-3);
@@ -515,6 +530,12 @@ body.modal-open .modal-close-btn { opacity: 1; pointer-events: auto; }
   }
   .dp-long-item figcaption strong { font-size: 13px; }
   .dp-intro > p:last-child { line-break: strict; word-break: normal; text-wrap: wrap; }
+  .dp-intro-sticker {
+    top: max(4px, env(safe-area-inset-top, 0px));
+    right: 22px;
+    width: clamp(112px, 30vw, 152px);
+    opacity: .9;
+  }
   .modal-close-btn {
     top: max(12px, env(safe-area-inset-top, 0px));
     left: max(12px, env(safe-area-inset-left, 0px));
