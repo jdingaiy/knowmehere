@@ -215,6 +215,30 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 .modal-overlay.open { opacity: 1; visibility: visible; }
+.modal-overlay.is-preparing .modal-box,
+.modal-overlay.is-loading .modal-box { visibility: hidden; }
+.detail-loading {
+  position: fixed;
+  z-index: 2;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.detail-loading[hidden] { display: none !important; }
+.detail-loading img {
+  display: block;
+  width: clamp(90px, 12.8vw, 141px);
+  height: auto;
+  object-fit: contain;
+}
+body.modal-open.modal-preparing .modal-close-btn,
+body.modal-open.modal-loading .modal-close-btn {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.modal-overlay.is-preparing .ip-fly,
+.modal-overlay.is-loading .ip-fly { animation-play-state: paused; }
 .modal-box {
   position: relative;
   width: 100%;

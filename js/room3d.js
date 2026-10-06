@@ -136,6 +136,9 @@ let stickerForgeDisplay = null;
 let stickerForgeEntranceDuration = 720;
 let stickerForgeBounds = null;
 let stickerForgeFallRoom = false;
+let loaderStickerForge = null;
+let loaderStickerForgeTimeline = null;
+let loaderStickerForgePromise = null;
 const stickerForgeImageCache = new Map();
 let peelDetailOpenTimer = null;
 
@@ -1701,6 +1704,143 @@ function stickerForgeMotion(entry) {
   const [origin, target] = pairs[edge];
   return { origin, target };
 }
+export async function peelLoaderLogo() {
+  const loader = document.getElementById('room-loader');
+  const target = document.getElementById('room-loader-forge');
+  if (!loader || !target) return false;
+  if (reducedMotion()) return true;
+  if (loaderStickerForgePromise) return loaderStickerForgePromise;
+
+  loaderStickerForgePromise = (async () => {
+    try {
+      target.style.display = 'block';
+      const forgeModule = await (stickerForgeModulePromise ||= stickerForgeModule());
+      if (!loaderStickerForge) {
+        const loaderLogoSrc = await resolveStickerForgeImage('assets/logo.svg');
+        loaderStickerForge = await forgeModule.createSticker(target, {
+          source: { type: 'image', src: loaderLogoSrc, padding: 0 },
+          outline: { width: 0, color: '#ffffff' },
+          edge: { width: 1.2, strength: 0.45 },
+          shadow: { opacity: 0.3, blur: 18, distance: 12, angle: 42 },
+          peel: { radius: 0.12, stiffness: 0.72, maxAngle: 3.55, residue: true, surfaceShadow: true },
+          sound: { enabled: false, volume: 0 },
+          material: { type: 'original', intensity: 0 },
+          display: { width: 56, height: 56 },
+          quality: 'low',
+          tilt: 0
+        });
+      }
+      if (!loader.isConnected) return false;
+      const canvas = target.querySelector('canvas');
+      if (canvas) canvas.style.opacity = '1';
+      loader.classList.add('is-forge-peeling');
+      await runStickerForgePeelAndFall(loaderStickerForge, {
+        origin: { x: 0.5, y: 0 },
+        target: { x: 0.5, y: 1 }
+      }, {
+        onTween: tween => { loaderStickerForgeTimeline = tween; },
+        onComplete: () => {
+          loaderStickerForge?.destroy();
+          loaderStickerForge = null;
+          loaderStickerForgeTimeline = null;
+        },
+        dropDistance: 1.7,
+        drift: 0.12,
+        spin: Math.PI * 0.7,
+        peelDuration: 0.62,
+        fallDuration: 0.54,
+        fadeTarget: target.querySelector('canvas')
+      });
+      return true;
+    } catch (error) {
+      loaderStickerForgeTimeline?.kill();
+      loaderStickerForgeTimeline = null;
+      loaderStickerForge?.destroy();
+      loaderStickerForge = null;
+      target.style.display = 'none';
+      loader.classList.remove('is-forge-peeling');
+      console.error('[Sticker Forge] Could not prepare the logo peel:', error);
+      return false;
+    }
+  })();
+  return loaderStickerForgePromise;
+}
+function runStickerForgePeelAndFall(forge, motion, {
+  onTween = () => {},
+  onPeelComplete = () => {},
+  onComplete = () => {},
+  dropDistance = 1.7,
+  drift = 0.18,
+  spin = Math.PI * 0.7,
+  peelDuration = 0.62,
+  fallDuration = 0.54,
+  positionOverride = null,
+  fadeTarget = null
+} = {}) {
+  forge.reset();
+  const initial = forge.getRenderSnapshot();
+  if (positionOverride) {
+    forge.setRenderSnapshot({
+      ...initial,
+      position: { x: positionOverride.x, y: positionOverride.y },
+      rotation: positionOverride.rotation
+    });
+  }
+  return new Promise(resolve => {
+    const progress = { value: 0 };
+    const peelTween = gsap.to(progress, {
+      value: 1,
+      duration: reducedMotion() ? 0 : peelDuration,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        forge.setPeelProgress(progress.value, motion);
+        if (positionOverride) {
+          const snapshot = forge.getRenderSnapshot();
+          forge.setRenderSnapshot({
+            ...snapshot,
+            position: { x: positionOverride.x, y: positionOverride.y },
+            rotation: positionOverride.rotation
+          });
+        }
+      },
+      onComplete: () => {
+        onPeelComplete();
+        const snapshot = forge.getRenderSnapshot();
+        const fall = {
+          y: snapshot.position.y,
+          x: snapshot.position.x,
+          spin: snapshot.rotation,
+          scale: 1,
+          opacity: 1
+        };
+        const fallTween = gsap.to(fall, {
+          y: fall.y - dropDistance,
+          x: fall.x + drift,
+          spin: fall.spin + spin,
+          scale: 0.12,
+          opacity: 0,
+          duration: reducedMotion() ? 0 : fallDuration,
+          ease: 'power2.in',
+          onUpdate: () => {
+            forge.setRenderSnapshot({
+              ...snapshot,
+              position: { x: fall.x, y: fall.y },
+              scale: { x: fall.scale, y: fall.scale },
+              rotation: fall.spin
+            });
+            if (fadeTarget) fadeTarget.style.opacity = String(fall.opacity);
+          },
+          onComplete: () => {
+            onComplete();
+            resolve();
+          }
+        });
+        onTween(fallTween);
+      }
+    });
+    onTween(peelTween);
+  });
+}
 async function showStickerForge(entry, { allowFall = false, preserveBase = false, quality = null } = {}) {
   const renderQuality = quality || (allowFall ? 'low' : 'high');
   ensureStickerForgeLayer();
@@ -1890,59 +2030,13 @@ async function animateStickerPeelToDetail(entry) {
   }
   // On first touch there may not be a Forge instance until this point.
   if (!clickPeelAudio) clickPeelAudio = beginStickerForgeClickSound();
-  stickerForge.reset();
-  const initial = stickerForge.getRenderSnapshot();
-  if (stickerForgeFallOffset) {
-    stickerForge.setRenderSnapshot({
-      ...initial,
-      position: { x: stickerForgeFallOffset.x, y: stickerForgeFallOffset.y },
-      rotation: stickerForgeFallOffset.rotation
-    });
-  }
-  const motion = stickerForgeMotion(entry);
-  const progress = { value: 0 };
-  stickerForgeTimeline = gsap.to(progress, {
-    value: 1,
-    duration: reducedMotion() ? 0 : 0.62,
-    ease: 'power2.inOut',
-    onUpdate: () => {
-      if (!stickerForge) return;
-      stickerForge.setPeelProgress(progress.value, motion);
-      if (stickerForgeFallOffset) {
-        const snapshot = stickerForge.getRenderSnapshot();
-        stickerForge.setRenderSnapshot({
-          ...snapshot,
-          position: { x: stickerForgeFallOffset.x, y: stickerForgeFallOffset.y },
-          rotation: stickerForgeFallOffset.rotation
-        });
-      }
-    },
-    onComplete: () => {
-      finishStickerForgeClickSound(clickPeelAudio);
-      const snapshot = stickerForge.getRenderSnapshot();
-      const fall = { y: snapshot.position.y, x: snapshot.position.x, spin: snapshot.rotation, scale: 1, opacity: 1 };
-      stickerForgeTimeline = gsap.to(fall, {
-        y: fall.y - Math.max(1.7, entry.S * 0.9),
-        x: fall.x + 0.18,
-        spin: fall.spin + Math.PI * 0.7,
-        scale: 0.12,
-        opacity: 0,
-        duration: reducedMotion() ? 0 : 0.54,
-        ease: 'power2.in',
-        onUpdate: () => {
-          stickerForge?.setRenderSnapshot({
-            ...snapshot,
-            position: { x: fall.x, y: fall.y },
-            scale: { x: fall.scale, y: fall.scale },
-            rotation: fall.spin
-          });
-          if (stickerForgeTarget) stickerForgeTarget.style.opacity = String(fall.opacity);
-        },
-        onComplete: () => {
-          openPeeledDetail(entry);
-        }
-      });
-    }
+  runStickerForgePeelAndFall(stickerForge, stickerForgeMotion(entry), {
+    onTween: tween => { stickerForgeTimeline = tween; },
+    onPeelComplete: () => finishStickerForgeClickSound(clickPeelAudio),
+    onComplete: () => openPeeledDetail(entry),
+    dropDistance: Math.max(1.7, entry.S * 0.9),
+    fadeTarget: stickerForgeTarget,
+    positionOverride: stickerForgeFallOffset
   });
 }
 function openPeeledDetail(entry) {

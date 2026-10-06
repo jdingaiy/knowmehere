@@ -6,23 +6,27 @@
   <title>谭加奇 · 作品集</title>
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <meta name="description" content="谭加奇 · UX 设计师 / AI 产品方向 · 天津大学 2027届" />
-  <link rel="stylesheet" href="css/global.css?v=20261006-loading-fallback-v1" />
-  <link rel="stylesheet" href="css/board.css?v=20261006-loading-fallback-v1" />
+  <link rel="stylesheet" href="css/global.css?v=20261006-detail-loader-two-cycles-v1" />
+  <link rel="stylesheet" href="css/board.css?v=20261006-sticker-forge-logo-peel-v2" />
   <link rel="stylesheet" href="css/pages.css?v=20261005-icons-spacing" />
   <!-- Preload critical assets in parallel with the HTML parse so the
        cylinder appears as soon as the JS runs. -->
   <link rel="preload" as="image"
         href="assets/texture/gravel_embedded_concrete_2k.blend/textures/gravel_embedded_concrete_diff_2k.jpg" />
+  <link rel="preload" as="image" href="assets/loader/character-turntable-loop.gif" />
   <link rel="preload" as="fetch" crossorigin
         href="assets/ip-manifest.json" />
-  <link rel="modulepreload" href="js/room3d.js?v=20261006-loading-fallback-v1" />
+  <link rel="modulepreload" href="js/room3d.js?v=20261006-sticker-forge-logo-peel-v2" />
   <link rel="preload" as="script" href="js/stickers-data.js" />
 
 </head>
 <body>
 
   <div class="room-loader" id="room-loader" role="status" aria-label="作品正在加载">
-    <div class="room-loader-mark"><img src="assets/logo.svg" alt="" /></div>
+    <div class="room-loader-mark">
+      <img src="assets/logo.svg" alt="" />
+    </div>
+    <div class="room-loader-forge" id="room-loader-forge" aria-hidden="true"></div>
   </div>
   <section class="room-fallback" id="room-fallback" aria-labelledby="room-fallback-title" hidden>
     <div class="room-fallback-card">
@@ -40,11 +44,24 @@
       const projectLinks = document.getElementById('room-fallback-projects');
       let loaderFinished = false;
       let fallbackShown = false;
+      let loaderExitStarted = false;
       const exitLoader = () => {
-        if (!loader || !loader.isConnected) return;
-        loader.classList.add('is-exiting');
-        setTimeout(() => loader.remove(), 620);
+        if (loaderExitStarted || !loader || !loader.isConnected) return;
+        loaderExitStarted = true;
+        const fadeOut = () => {
+          if (!loader.isConnected) return;
+          loader.classList.add('is-exiting');
+          setTimeout(() => loader.remove(), 620);
+        };
+        if (window.__motionReduced?.()) return fadeOut();
+        const peel = window.__peelRoomLoaderLogo;
+        if (typeof peel !== 'function') return fadeOut();
+        Promise.race([
+          Promise.resolve().then(peel),
+          new Promise(resolve => setTimeout(resolve, 2200))
+        ]).catch(error => console.error('[Sticker Forge] Logo peel failed:', error)).finally(fadeOut);
       };
+      window.__exitRoomLoader = exitLoader;
       const showFallback = () => {
         if (fallbackShown) return;
         fallbackShown = true;
@@ -275,6 +292,9 @@
         <div id="modal-slot"></div>
       </div>
     </div>
+    <div class="detail-loading" id="detail-loading" role="status" aria-label="详情内容正在加载" hidden>
+      <img src="assets/loader/character-turntable-loop.gif" alt="" />
+    </div>
   </div>
   <div class="image-lightbox" id="image-lightbox" aria-hidden="true">
     <button type="button" class="image-lightbox-close" aria-label="关闭大图">✕</button>
@@ -341,7 +361,7 @@
              ${d.longImages.map((src, index) => {
                const caption = d.longImageCaptions?.[index] || '';
                return `<figure class="dp-long-item">
-                 <img src="${src}" alt="${d.name}" loading="lazy" tabindex="0" role="button" aria-label="点击放大查看：${d.name}" />
+                 <img src="${src}" alt="${d.name}" loading="eager" tabindex="0" role="button" aria-label="点击放大查看：${d.name}" />
                  ${caption ? `<figcaption><strong>${caption.title || ''}</strong><span>${caption.body || caption}</span></figcaption>` : ''}
                </figure>`;
              }).join('')}
@@ -382,14 +402,14 @@
         return `<img class="ip-fly" src="${encodeURI(s.src)}" alt="${s.ip}"
           data-rot="${rot}" data-ip="${s.ip}"
           style="--l:${left}%; --t:${top}%; --r:${rot}deg; --sz:${sz}px;
-                 --delay:${delay}ms;" loading="lazy" draggable="false" />`;
+                 --delay:${delay}ms;" loading="eager" draggable="false" />`;
       }).join('');
 
       // Following screens: each long image of THIS IP on its own full-viewport
       // page, contained with padding so we always see the full picture.
       const pages = (ip.longImages || []).map(img =>
         `<section class="ip-page">
-           <img src="${encodeURI(img)}" alt="${ip.name}" loading="lazy" />
+           <img src="${encodeURI(img)}" alt="${ip.name}" loading="eager" />
          </section>`
       );
 
@@ -399,13 +419,42 @@
         </section>
         ${pages.join('')}`;
     }
+    let modalRenderToken = 0;
+    const detailLoader = document.getElementById('detail-loading');
+    function waitForDetailImages() {
+      const images = [...overlay.querySelectorAll('.modal-box img')];
+      const imagePromises = images.map(img => new Promise(resolve => {
+        const finish = () => {
+          if (img.naturalWidth && typeof img.decode === 'function') {
+            try { Promise.resolve(img.decode()).catch(() => {}).finally(resolve); }
+            catch (_) { resolve(); }
+          } else resolve(); // a failed image should not trap the page in loading state
+        };
+        if (img.complete) finish();
+        else {
+          img.addEventListener('load', finish, { once: true });
+          img.addEventListener('error', finish, { once: true });
+        }
+      }));
+      // A stalled remote asset must not leave the detail page behind the
+      // loader forever. Normal completion still waits for every image decode.
+      let timeoutId;
+      return Promise.race([
+        Promise.all(imagePromises),
+        new Promise(resolve => { timeoutId = setTimeout(resolve, 18000); }),
+      ]).finally(() => clearTimeout(timeoutId));
+    }
     function openModal(d, fromRoute = false) {
+      const renderToken = ++modalRenderToken;
       if (!fromRoute && d && d.id) {
         const route = `#project=${encodeURIComponent(d.id)}`;
         if (location.hash !== route) history.pushState({ project: d.id }, '', route);
       }
       currentModal = d;
       document.getElementById('modal-slot').innerHTML = renderModal(d);
+      overlay.classList.add('is-preparing');
+      detailLoader.hidden = true;
+      document.body.classList.add('modal-preparing');
       const isIp = d && d.kind === 'illustration-ip';
       const hasDemo = d && d.demoType === 'iframe' && d.demoUrl
         && !String(d.demoUrl).startsWith('PLACEHOLDER');
@@ -423,23 +472,50 @@
       previousModalScroll = 0;
       closeButton.classList.remove('is-scroll-hidden');
       if (window.__room) window.__room.pause();
-      initCarousel();
-      if (isIp) enableIpDrag();
       gsap.killTweensOf([overlay, '.modal-box', '.modal-close-btn']);
       const duration = reduceMotion() ? 0 : 0.46;
-      gsap.timeline({ defaults: { overwrite: 'auto' } })
-        .fromTo(overlay, { autoAlpha: 0 }, { autoAlpha: 1, duration: duration * 0.7, ease: 'power2.out' }, 0)
-        .fromTo('.modal-box', { y: reduceMotion() ? 0 : 24 }, { y: 0, duration, ease: 'power3.out' }, 0.04)
-        .fromTo('.modal-close-btn', { autoAlpha: 0, scale: reduceMotion() ? 1 : 0.88 },
-          { autoAlpha: 1, scale: 1, duration: duration * 0.7, ease: 'back.out(1.5)' }, 0.1);
+      gsap.set(overlay, { autoAlpha: 1 });
+      const imageLoad = waitForDetailImages();
+      const showLoaderAfterDelay = new Promise(resolve => setTimeout(() => resolve(true), 200));
+      Promise.race([imageLoad.then(() => false), showLoaderAfterDelay]).then(async shouldShowLoader => {
+        if (renderToken !== modalRenderToken || currentModal !== d) return;
+        let loaderShownAt = 0;
+        if (shouldShowLoader) {
+          loaderShownAt = performance.now();
+          overlay.classList.remove('is-preparing');
+          overlay.classList.add('is-loading');
+          document.body.classList.remove('modal-preparing');
+          document.body.classList.add('modal-loading');
+          detailLoader.hidden = false;
+        }
+        await imageLoad;
+        if (renderToken !== modalRenderToken || currentModal !== d) return;
+        if (loaderShownAt) {
+          const twoGifLoops = 2 * 800;
+          const remainingVisible = twoGifLoops - (performance.now() - loaderShownAt);
+          if (remainingVisible > 0) await new Promise(resolve => setTimeout(resolve, remainingVisible));
+          if (renderToken !== modalRenderToken || currentModal !== d) return;
+        }
+        detailLoader.hidden = true;
+        overlay.classList.remove('is-loading', 'is-preparing');
+        document.body.classList.remove('modal-loading', 'modal-preparing');
+        initCarousel();
+        if (isIp) enableIpDrag();
+        gsap.timeline({ defaults: { overwrite: 'auto' } })
+          .fromTo('.modal-box', { y: reduceMotion() ? 0 : 24 }, { y: 0, duration, ease: 'power3.out' }, 0)
+          .fromTo('.modal-close-btn', { autoAlpha: 0, scale: reduceMotion() ? 1 : 0.88 },
+            { autoAlpha: 1, scale: 1, duration: duration * 0.7, ease: 'back.out(1.5)' }, 0.06);
+      });
     }
     function closeModal(fromRoute = false) {
+      ++modalRenderToken;
       if (!fromRoute && location.hash.startsWith('#project=')) {
         history.replaceState({}, '', location.pathname + location.search);
       }
       const finish = () => {
-        overlay.classList.remove('open', 'ip-mode');
-        document.body.classList.remove('modal-open', 'ip-modal');
+        detailLoader.hidden = true;
+        overlay.classList.remove('open', 'ip-mode', 'is-loading', 'is-preparing');
+        document.body.classList.remove('modal-open', 'ip-modal', 'modal-loading', 'modal-preparing');
         document.body.style.overflow = '';
         gsap.set([overlay, '.modal-box', '.modal-close-btn'], { clearProps: 'all' });
         if (window.__room && !track.classList.contains('show-cv')) window.__room.resume();
@@ -839,7 +915,8 @@
 
   <!-- 3D room (module) -->
   <script type="module">
-    import { initRoom, addStickers, finishStickerRegistration, focusProject, pause, resume, playReveal } from './js/room3d.js?v=20261006-hover-performance-v1';
+    import { initRoom, addStickers, finishStickerRegistration, focusProject, pause, resume, playReveal, peelLoaderLogo } from './js/room3d.js?v=20261006-sticker-forge-logo-peel-v2';
+    window.__peelRoomLoaderLogo = peelLoaderLogo;
     const container = document.getElementById('room-canvas');
     const introLoader = document.getElementById('room-loader');
     const introStartedAt = performance.now();
@@ -852,8 +929,7 @@
       setTimeout(() => {
         try { playReveal(); }
         catch (error) { console.error('[portfolio] reveal failed:', error); window.__showRoomFallback?.(); }
-        requestAnimationFrame(() => introLoader?.classList.add('is-exiting'));
-        setTimeout(() => introLoader?.remove(), 620);
+        window.__exitRoomLoader?.();
       }, remaining);
     };
     let roomAvailable = false;
