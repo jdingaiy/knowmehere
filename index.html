@@ -15,7 +15,7 @@
         href="assets/texture/gravel_embedded_concrete_2k.blend/textures/gravel_embedded_concrete_diff_2k.jpg" />
   <link rel="preload" as="fetch" crossorigin
         href="assets/ip-manifest.json" />
-  <link rel="modulepreload" href="js/room3d.js?v=20261006-click-peel-sound" />
+  <link rel="modulepreload" href="js/room3d.js?v=20261006-webp-inertia" />
   <link rel="preload" as="script" href="js/stickers-data.js" />
 
 </head>
@@ -232,9 +232,9 @@
   </div>
 
   <!-- sticker data (global STICKERS_DATA) -->
-  <script src="js/stickers-data.js?v=20261005-portfolio-icons"></script>
+  <script src="js/stickers-data.js?v=20261006-webp-images"></script>
   <!-- 附加项目数据（原 NDA 项目，已全站公开） -->
-  <script src="js/stickers-private.js?v=20261005-portfolio-icons"></script>
+  <script src="js/stickers-private.js?v=20261006-webp-images"></script>
   <!-- Keep GSAP local so interface animations do not depend on a third-party CDN. -->
   <script src="js/gsap.min.js"></script>
 
@@ -773,7 +773,7 @@
 
   <!-- 3D room (module) -->
   <script type="module">
-    import { initRoom, addStickers, finishStickerRegistration, focusProject, pause, resume, playReveal } from './js/room3d.js?v=20261006-click-peel-sound';
+    import { initRoom, addStickers, finishStickerRegistration, focusProject, pause, resume, playReveal } from './js/room3d.js?v=20261006-webp-inertia';
     const container = document.getElementById('room-canvas');
     const introLoader = document.getElementById('room-loader');
     const introStartedAt = performance.now();

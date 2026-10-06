@@ -44,18 +44,25 @@ let viewY = 0;         // vertical pan offset (scroll / swipe)
 let cameraAngle = 0;   // camera orbit angle around the Y axis (radians)
 // Give the pole visual weight: a full-width mouse drag turns only 0.62 of a
 // revolution. Touch stays slightly more responsive, and release velocity is
-// projected into a short, capped glide instead of stopping abruptly.
+// projected into a short, velocity-led glide instead of stopping abruptly.
 const ORBIT_TURNS_PER_VIEW = 0.62;
 const ORBIT_TOUCH_TURNS_PER_VIEW = 0.72;
 const PAN_GAIN_MOUSE = 0.018;
 const PAN_GAIN_TOUCH = 0.032;
-const INERTIA_LOOKAHEAD_MS = 260;
+const INERTIA_DECAY_SECONDS = 0.24;
+const INERTIA_GLIDE_SECONDS = 0.72;
 const MAX_ORBIT_THROW = Math.PI * 0.42;
 const MAX_PAN_THROW = 1.45;
 // Animate cameraAngle (camera orbit around the pole) to a target value.
 // Picks the shorter rotation direction. Returns a promise.
 let _rotAnim = null;
+let _inertiaAnim = null;
+function killCameraInertia() {
+  _inertiaAnim?.kill();
+  _inertiaAnim = null;
+}
 function tweenCameraAngle(target, ms) {
+  killCameraInertia();
   if (_rotAnim) _rotAnim.kill();
   const start = cameraAngle;
   let delta = target - start;
@@ -76,6 +83,7 @@ function tweenCameraAngle(target, ms) {
 // Vertical pan tween — bring a sticker's y to the centre of the viewport.
 let _yAnim = null;
 function tweenViewY(target, ms) {
+  killCameraInertia();
   if (_yAnim) _yAnim.kill();
   const start = viewY;
   const lo = -CFG.viewYRange, hi = CFG.viewYRange;
@@ -101,6 +109,7 @@ let isPaused = false;
 // Desktop hover intent: wait briefly before centring a sticker so casually
 // crossing the pole does not make the camera chase every item.
 const HOVER_FOCUS_DELAY = 220;
+const CLICK_SLOP_PX = 10;
 let hoverFocusTimer = null;
 let hoverFocusTarget = null;
 let focusedSticker = null;
@@ -1239,6 +1248,7 @@ function onDown(e) {
   // visitor actually opens a sticker we'll persist it (see onUp).
   stopHint();
   // A fresh gesture takes control from hover focus or the previous glide.
+  killCameraInertia();
   if (_rotAnim) { _rotAnim.kill(); _rotAnim = null; }
   if (_yAnim) { _yAnim.kill(); _yAnim = null; }
   setPointer(e);
@@ -1332,8 +1342,11 @@ function onMove(e) {
     const dt = Math.max(8, Math.min(50, now - rotating.lastAt));
     const instantAngleV = (e.clientX - rotating.lastX) * anglePerPx / dt;
     const instantYV = (e.clientY - rotating.lastY) * gain / dt;
-    rotating.velocityAngle = rotating.velocityAngle * 0.68 + instantAngleV * 0.32;
-    rotating.velocityY = rotating.velocityY * 0.68 + instantYV * 0.32;
+    // Time-based filtering behaves consistently at 60 Hz, 120 Hz, and when
+    // Windows browsers coalesce pointer events under load.
+    const velocityMix = 1 - Math.exp(-dt / 42);
+    rotating.velocityAngle += (instantAngleV - rotating.velocityAngle) * velocityMix;
+    rotating.velocityY += (instantYV - rotating.velocityY) * velocityMix;
     rotating.lastX = e.clientX;
     rotating.lastY = e.clientY;
     rotating.lastAt = now;
@@ -1341,7 +1354,7 @@ function onMove(e) {
   }
   if (!dragging) return;
   const pointerTravel = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
-  if (pointerTravel > 6) dragMoved = true;
+  if (pointerTravel > CLICK_SLOP_PX) dragMoved = true;
   dragging._targetPeel = 0;
   // Keep the camera still and map the pointer directly onto the pole. The
   // original pickup offset prevents the sticker jumping under the cursor.
@@ -1369,15 +1382,16 @@ function onUp(e = {}, cancelled = false) {
     const release = rotating;
     rotating = null;
     if (!cancelled && !wasTap && !reducedMotion()) {
-      // A short pause before release intentionally cancels momentum.
-      const freshness = clamp(1 - (performance.now() - release.lastAt) / 110, 0, 1);
+      // Exponential freshness avoids an abrupt cutoff if pointerup arrives a
+      // frame after the last pointermove.
+      const freshness = Math.exp(-Math.max(0, performance.now() - release.lastAt) / 95);
       const angleThrow = clamp(
-        release.velocityAngle * INERTIA_LOOKAHEAD_MS * freshness,
+        release.velocityAngle * 1000 * INERTIA_DECAY_SECONDS * freshness,
         -MAX_ORBIT_THROW,
         MAX_ORBIT_THROW
       );
       const yThrow = clamp(
-        release.velocityY * INERTIA_LOOKAHEAD_MS * freshness,
+        release.velocityY * 1000 * INERTIA_DECAY_SECONDS * freshness,
         -MAX_PAN_THROW,
         MAX_PAN_THROW
       );
@@ -1386,9 +1400,22 @@ function onUp(e = {}, cancelled = false) {
         Math.abs(yThrow) / MAX_PAN_THROW
       );
       if (strength > 0.025) {
-        const glideMs = 360 + strength * 420;
-        tweenCameraAngle(cameraAngle + angleThrow, glideMs);
-        tweenViewY(viewY + yThrow, glideMs);
+        const glide = { elapsed: 0 };
+        const startAngle = cameraAngle;
+        const startY = viewY;
+        const duration = Math.min(INERTIA_GLIDE_SECONDS, INERTIA_DECAY_SECONDS * 3);
+        _inertiaAnim = gsap.to(glide, {
+          elapsed: duration,
+          duration,
+          ease: 'none',
+          overwrite: 'auto',
+          onUpdate: () => {
+            const decay = 1 - Math.exp(-glide.elapsed / INERTIA_DECAY_SECONDS);
+            cameraAngle = startAngle + angleThrow * decay;
+            viewY = clamp(startY + yThrow * decay, -CFG.viewYRange, CFG.viewYRange);
+          },
+          onComplete: () => { _inertiaAnim = null; }
+        });
       }
     }
     // Double-tap on empty space -> spin and pan to the densest sticker cluster.
@@ -1501,6 +1528,9 @@ function onUp(e = {}, cancelled = false) {
 
 function updateHoverTag(e) {
   if (!tagEl) return;
+  // Keep pointer-up over the peeled sticker from starting a second hover
+  // entrance while the click-to-detail peel is already running.
+  if (peeledStickerForDetail) { hideTag(); cancelHoverFocus(); return; }
   if (dragging || rotating) { hideTag(); cancelHoverFocus(); return; }
   setPointer(e);
   raycaster.setFromCamera(pointer, camera);
@@ -1741,10 +1771,12 @@ async function animateHoverFocus(entry) {
   // only during the short cross-fade back after the motion has completed.
   try { ready = await showStickerForge(entry); }
   catch (error) {
+    if (peeledStickerForDetail === entry) return;
     console.error('[Sticker Forge] Could not prepare hover animation:', error);
     hideStickerForge(entry);
     return;
   }
+  if (peeledStickerForDetail === entry) return;
   if (!ready || focusedSticker !== entry || (hoverFocusTarget !== entry && focusedPointer !== null)) {
     hideStickerForge(entry);
     return;
@@ -1813,7 +1845,10 @@ async function animateStickerPeelToDetail(entry) {
     openPeeledDetail(entry);
     return;
   }
-  if (!ready) return;
+  if (!ready) {
+    if (peeledStickerForDetail === entry) openPeeledDetail(entry);
+    return;
+  }
   // On first touch there may not be a Forge instance until this point.
   if (!clickPeelAudio) clickPeelAudio = beginStickerForgeClickSound();
   stickerForge.reset();
