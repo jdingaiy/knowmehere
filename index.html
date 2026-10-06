@@ -6,7 +6,7 @@
   <title>谭加奇 · 作品集</title>
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <meta name="description" content="谭加奇 · UX 设计师 / AI 产品方向 · 天津大学 2027届" />
-  <link rel="stylesheet" href="css/global.css?v=20261005-ip-fit" />
+  <link rel="stylesheet" href="css/global.css?v=20261006-image-captions" />
   <link rel="stylesheet" href="css/board.css?v=20261006-room-intro-v3" />
   <link rel="stylesheet" href="css/pages.css?v=20261005-icons-spacing" />
   <!-- Preload critical assets in parallel with the HTML parse so the
@@ -232,9 +232,9 @@
   </div>
 
   <!-- sticker data (global STICKERS_DATA) -->
-  <script src="js/stickers-data.js?v=20261006-project-dates"></script>
+  <script src="js/stickers-data.js?v=20261006-image-captions"></script>
   <!-- 附加项目数据（原 NDA 项目，已全站公开） -->
-  <script src="js/stickers-private.js?v=20261006-webp-images"></script>
+  <script src="js/stickers-private.js?v=20261006-image-captions"></script>
   <!-- Keep GSAP local so interface animations do not depend on a third-party CDN. -->
   <script src="js/gsap.min.js"></script>
 
@@ -279,8 +279,13 @@
         : '';
       const longs = (Array.isArray(d.longImages) && d.longImages.length)
         ? `<section class="dp-long">
-             ${d.longImages.map(src =>
-               `<img src="${src}" alt="${d.name}" loading="lazy" tabindex="0" role="button" aria-label="点击放大查看：${d.name}" />`).join('')}
+             ${d.longImages.map((src, index) => {
+               const caption = d.longImageCaptions?.[index] || '';
+               return `<figure class="dp-long-item">
+                 <img src="${src}" alt="${d.name}" loading="lazy" tabindex="0" role="button" aria-label="点击放大查看：${d.name}" />
+                 ${caption ? `<figcaption><strong>${caption.title || ''}</strong><span>${caption.body || caption}</span></figcaption>` : ''}
+               </figure>`;
+             }).join('')}
            </section>`
         : '';
       if (!hasDemo && !longs) {

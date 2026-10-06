@@ -444,7 +444,7 @@ body.modal-open .modal-close-btn { opacity: 1; pointer-events: auto; }
 /* ── LONG IMAGES: stacked seamlessly, no card, no header image ── */
 .dp-long {
   display: flex; flex-direction: column;
-  gap: clamp(20px, 3vw, 36px);
+  gap: clamp(56px, 7vw, 88px);
   width: 100%;
   padding: clamp(20px, 4vw, 48px) clamp(16px, 5vw, 72px) clamp(48px, 7vw, 88px);
 }
@@ -453,7 +453,37 @@ body.modal-open .modal-close-btn { opacity: 1; pointer-events: auto; }
   width: 100%;
   height: auto;
   margin: 0;
+  border-radius: 16px;
+  corner-shape: squircle;
   cursor: zoom-in;
+}
+.dp-long-item { margin: 0; }
+.dp-long-item figcaption {
+  max-width: 900px;
+  margin: 24px 0 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.8;
+  text-align: left;
+  text-wrap: pretty;
+}
+.dp-long-item figcaption strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.dp-long-item figcaption span { display: block; }
+@media (max-width: 720px) {
+  .dp-long-item figcaption {
+    margin-top: 18px;
+    font-size: 12px;
+    line-height: 1.7;
+    text-align: left;
+  }
+  .dp-long-item figcaption strong { font-size: 13px; }
 }
 
 .dp-section-label {
