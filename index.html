@@ -32,7 +32,7 @@
     <div class="room-fallback-card">
       <p class="room-fallback-kicker">PORTFOLIO</p>
       <h1 id="room-fallback-title">3D 展示暂时无法启动</h1>
-      <p>可能是网络较慢，或当前浏览器的图形加速不可用。你仍可以直接查看项目详情。</p>
+      <p>可能是网络较慢，或当前浏览器的图形加速暂不可用。可以先刷新页面重试；如果仍无法启动，也可以直接查看项目详情。</p>
       <nav class="room-fallback-projects" id="room-fallback-projects" aria-label="项目详情"></nav>
       <button type="button" class="room-fallback-retry" id="room-fallback-retry">重新加载</button>
     </div>
@@ -88,7 +88,7 @@
         if (loaderFinished || !loader?.isConnected || loader.classList.contains('is-exiting')) return;
         if (typeof window.__forceRoomReveal === 'function') window.__forceRoomReveal();
         else showFallback();
-      }, 10000);
+      }, 60000);
     })();
   </script>
 
