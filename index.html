@@ -6,7 +6,7 @@
   <title>谭加奇 · 作品集</title>
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <meta name="description" content="谭加奇 · UX 设计师 / AI 产品方向 · 天津大学 2027届" />
-  <link rel="stylesheet" href="css/global.css?v=20261006-detail-loader-two-cycles-v1" />
+  <link rel="stylesheet" href="css/global.css?v=20261007-logo-easter-egg-v1" />
   <link rel="stylesheet" href="css/board.css?v=20261006-sticker-forge-logo-peel-v2" />
   <link rel="stylesheet" href="css/pages.css?v=20261005-icons-spacing" />
   <!-- Preload critical assets in parallel with the HTML parse so the
@@ -94,14 +94,15 @@
 
   <!-- ── TOP BAR: logo + tabs ── -->
   <nav class="ui-topbar" role="navigation" aria-label="页面切换">
-    <a href="#works" class="ui-logo" id="site-logo" data-panel="works" aria-label="首页">
+    <button class="ui-logo" id="site-logo" type="button" aria-label="播放角色小动效：上半身探出">
       <img src="assets/logo.svg" alt="谭加奇" />
-    </a>
+    </button>
     <div class="ui-tabs" data-active="works">
       <a href="#works" class="ui-tab active" data-panel="works" id="tab-works">作品</a>
       <a href="#cv"    class="ui-tab"        data-panel="cv"    id="tab-cv">简历</a>
     </div>
   </nav>
+  <div class="site-effect-layer" id="site-effects" aria-hidden="true"></div>
 
   <!-- ── Bottom pill — download on CV ── -->
   <a class="ui-pill ui-pill-bottom" id="dl-btn"
@@ -244,6 +245,36 @@
     const tabWorks  = document.getElementById('tab-works');
     const tabCv     = document.getElementById('tab-cv');
     let currentModal = null;
+
+    // Small character easter eggs: each activation advances to the next
+    // lightweight CSS animation, then loops back to the first one.
+    const motionEffects = [
+      { name: '上半身探出', src: 'assets/character-effects/character-front.png', className: 'effect-peek', duration: 1900 },
+      { name: '眼镜掉落', src: 'assets/character-effects/glasses.png', className: 'effect-glasses', duration: 1250 },
+      { name: '人物掉落', src: 'assets/character-effects/character-front.png', className: 'effect-fall', duration: 1450 },
+    ];
+    const motionTrigger = document.getElementById('site-logo');
+    const motionLayer = document.getElementById('site-effects');
+    let nextMotion = 0;
+    let motionPlaying = false;
+    motionTrigger.addEventListener('click', () => {
+      if (motionPlaying) return;
+      const effect = motionEffects[nextMotion];
+      nextMotion = (nextMotion + 1) % motionEffects.length;
+      motionPlaying = true;
+      motionTrigger.setAttribute('aria-label', `播放角色小动效：${motionEffects[nextMotion].name}`);
+      motionLayer.replaceChildren();
+      const img = document.createElement('img');
+      img.className = `site-effect-img ${effect.className}`;
+      img.src = effect.src;
+      img.alt = '';
+      img.draggable = false;
+      motionLayer.append(img);
+      window.setTimeout(() => {
+        img.remove();
+        motionPlaying = false;
+      }, effect.duration + 80);
+    });
 
     function renderModal(d) {
       // Special view: any IP-illustration sticker opens that IP's detail page.
