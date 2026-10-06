@@ -360,8 +360,9 @@
         ? `<section class="dp-long">
              ${d.longImages.map((src, index) => {
                const caption = d.longImageCaptions?.[index] || '';
+               const loading = index === 0 ? 'eager' : 'lazy';
                return `<figure class="dp-long-item">
-                 <img src="${src}" alt="${d.name}" loading="eager" tabindex="0" role="button" aria-label="点击放大查看：${d.name}" />
+                 <img src="${src}" alt="${d.name}" loading="${loading}" decoding="async" tabindex="0" role="button" aria-label="点击放大查看：${d.name}" />
                  ${caption ? `<figcaption><strong>${caption.title || ''}</strong><span>${caption.body || caption}</span></figcaption>` : ''}
                </figure>`;
              }).join('')}
@@ -402,14 +403,14 @@
         return `<img class="ip-fly" src="${encodeURI(s.src)}" alt="${s.ip}"
           data-rot="${rot}" data-ip="${s.ip}"
           style="--l:${left}%; --t:${top}%; --r:${rot}deg; --sz:${sz}px;
-                 --delay:${delay}ms;" loading="eager" draggable="false" />`;
+                 --delay:${delay}ms;" loading="${i < 4 ? 'eager' : 'lazy'}" decoding="async" draggable="false" />`;
       }).join('');
 
       // Following screens: each long image of THIS IP on its own full-viewport
       // page, contained with padding so we always see the full picture.
-      const pages = (ip.longImages || []).map(img =>
+      const pages = (ip.longImages || []).map((img, index) =>
         `<section class="ip-page">
-           <img src="${encodeURI(img)}" alt="${ip.name}" loading="eager" />
+           <img src="${encodeURI(img)}" alt="${ip.name}" loading="${index === 0 ? 'eager' : 'lazy'}" decoding="async" />
          </section>`
       );
 
@@ -421,8 +422,36 @@
     }
     let modalRenderToken = 0;
     const detailLoader = document.getElementById('detail-loading');
+    let lastProjectRouteWriteAt = 0;
+    function syncProjectRoute(d) {
+      if (!d?.id) return;
+      const route = `#project=${encodeURIComponent(d.id)}`;
+      if (location.hash === route) return;
+      const state = { project: d.id };
+      const now = performance.now();
+      try {
+        // Safari limits rapid history writes. Keep the first navigation
+        // bookmarkable, then replace it if another project opens immediately.
+        if (now - lastProjectRouteWriteAt < 800) history.replaceState(state, '', route);
+        else history.pushState(state, '', route);
+        lastProjectRouteWriteAt = now;
+      } catch (error) {
+        // A history throttling exception must never prevent the detail view
+        // itself from rendering. Updating in place is a safe best-effort.
+        try {
+          history.replaceState(state, '', route);
+          lastProjectRouteWriteAt = now;
+        } catch (replaceError) {
+          console.warn('[portfolio] Could not update the project URL:', replaceError || error);
+        }
+      }
+    }
     function waitForDetailImages() {
-      const images = [...overlay.querySelectorAll('.modal-box img')];
+      // Only gate the transition on first-screen assets. Long case-study
+      // pages can contain many full-resolution images; lazy images load as
+      // the visitor scrolls, avoiding simultaneous decode pressure in Safari.
+      const images = [...overlay.querySelectorAll('.modal-box img')]
+        .filter(img => img.loading !== 'lazy');
       const imagePromises = images.map(img => new Promise(resolve => {
         const finish = () => {
           if (img.naturalWidth && typeof img.decode === 'function') {
@@ -446,10 +475,7 @@
     }
     function openModal(d, fromRoute = false) {
       const renderToken = ++modalRenderToken;
-      if (!fromRoute && d && d.id) {
-        const route = `#project=${encodeURIComponent(d.id)}`;
-        if (location.hash !== route) history.pushState({ project: d.id }, '', route);
-      }
+      if (!fromRoute) syncProjectRoute(d);
       currentModal = d;
       document.getElementById('modal-slot').innerHTML = renderModal(d);
       overlay.classList.add('is-preparing');
@@ -510,7 +536,8 @@
     function closeModal(fromRoute = false) {
       ++modalRenderToken;
       if (!fromRoute && location.hash.startsWith('#project=')) {
-        history.replaceState({}, '', location.pathname + location.search);
+        try { history.replaceState({}, '', location.pathname + location.search); }
+        catch (error) { console.warn('[portfolio] Could not clear the project URL:', error); }
       }
       const finish = () => {
         detailLoader.hidden = true;
