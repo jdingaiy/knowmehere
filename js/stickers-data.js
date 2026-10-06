@@ -11,7 +11,7 @@ const STICKERS_DATA = [
     id: 'shenghuoyin',
     category: 'vibe',
     surface: 'wall',           // left wall area
-    name: '生活印诗歌机',
+    name: '生活印诗机',
     subtitle: 'vibe',
     organization: '个人',
     sticker: 'assets/stickers/shenghuoyin.PNG',
@@ -72,7 +72,7 @@ const STICKERS_DATA = [
     tags: ['AI', '社区产品', '小红书笔试题'],
     description: '负责知乎圈子 AI 管理员项目的整体 UX/UI 设计，并参与定义 AI 管理员头像生成 Skill 与 Bot 回复风格。',
     role: '产品体验设计 · 笔试项目',
-    period: '2026',
+    period: '2026.09',
     metrics: [],
     demoType: null, demoUrl: null,
     longImages: [
@@ -101,7 +101,7 @@ const STICKERS_DATA = [
     tags: ['Vibe', '交互原型', '小红书笔试题'],
     description: '一款帮助人们收集家庭记忆、并将散落片段重新编织成故事的移动端体验。通过贴纸化的互动方式整理照片与记忆，让日常素材成为可分享、可传承的叙事。',
     role: '产品设计 · 笔试项目',
-    period: '2026',
+    period: '2026.09',
     metrics: [],
     demoType: 'iframe',
     demoUrl: 'https://jdingaiy.github.io/gathertime-interaction-demo/',
