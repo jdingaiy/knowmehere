@@ -36,6 +36,9 @@ const CFG = {
   sidePadPx: 80,         // screen-px padding from pole edge to viewport edge
   camZDefault: 14,       // baseline camera distance for wide screens
 };
+// Keep high-DPI desktop rendering crisp without paying for a full 2x backing
+// buffer across the entire tall 3D scene.
+const ROOM_PIXEL_RATIO_CAP = 1.5;
 
 let scene, camera, renderer, raycaster, pointer;
 let pole, world, poleLightMap = null;
@@ -139,6 +142,10 @@ let peelDetailOpenTimer = null;
 /* ---------- loading manager + reveal (intro animation) state ---------- */
 let onProgressCb = null, onReadyCb = null;
 let mgrBusy = false, stickersAdded = false, stickerDataReady = false, revealed = false;
+// The canvas is intentionally inert through resource loading and the intro
+// reveal. On a first visit, early pointer events can otherwise combine an
+// unfinished camera orbit with hover focus and a click-to-peel gesture.
+let interactionsReady = false;
 let _revealPose = null;
 const loadMgr = new THREE.LoadingManager();
 loadMgr.onStart = () => { mgrBusy = true; };
@@ -440,7 +447,7 @@ export function initRoom(opts) {
   baseCam();
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, ROOM_PIXEL_RATIO_CAP));
   renderer.setSize(w, h);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.domElement.style.touchAction = 'none'; // let pointer drags work on touch
@@ -1180,8 +1187,19 @@ let lastTapAt = 0;     // for double-tap detection on empty space
 let rotateMoved = false;
 function bindEvents() {
   const el = renderer.domElement;
-  el.addEventListener('pointerdown', onDown);
-  el.addEventListener('pointermove', onMove);
+  el.addEventListener('pointerdown', (event) => {
+    if (!interactionsReady) return;
+    onDown(event);
+  });
+  el.addEventListener('pointermove', (event) => {
+    if (!interactionsReady) return;
+    onMove(event);
+  });
+  el.addEventListener('pointerdown', () => {
+    // Clear any hover intent synchronously, before pointer capture and click
+    // handling. This prevents a pending hover timer from firing mid-peel.
+    cancelHoverFocus();
+  }, { capture: true });
   window.addEventListener('pointerup', onUp);
   el.addEventListener('pointercancel', (e) => onUp(e, true));
   el.addEventListener('lostpointercapture', (e) => {
@@ -1246,6 +1264,7 @@ function pickStickerByAlpha() {
   return null;
 }
 function onDown(e) {
+  if (!interactionsReady) return;
   // Recover defensively if the browser swallowed the previous gesture's
   // ending event. A new gesture must never inherit a curled sticker state.
   if (dragging || rotating) onUp(e, true);
@@ -1271,8 +1290,19 @@ function onDown(e) {
   downPos = { x: e.clientX, y: e.clientY };
   try { renderer.domElement.setPointerCapture(e.pointerId); } catch (err) {}
   if (picked) {
+    // A click owns the gesture from its first frame. Cancel hover entrance,
+    // contextual focus and any camera tween before starting the peel so the
+    // same sticker cannot also enter the centre-focus animation.
     cancelHoverFocus();
     clearFocusedSticker();
+    hideTag();
+    stickerForgeScaleTween?.kill();
+    stickerForgeScaleTween = null;
+    stickerForgeTimeline?.kill();
+    stickerForgeTimeline = null;
+    if (stickerForgeEntry === picked && peeledStickerForDetail !== picked) hideStickerForge(picked);
+    if (_rotAnim) { _rotAnim.kill(); _rotAnim = null; }
+    if (_yAnim) { _yAnim.kill(); _yAnim = null; }
     dragging = picked;
     // Initial illustration ordering is intentionally bottom-weighted, but any
     // direct drag promotes the picked sticker into the shared foreground stack.
@@ -1322,6 +1352,7 @@ function onDown(e) {
   };
 }
 function onMove(e) {
+  if (!interactionsReady) return;
   // Mouse buttons reaching zero without pointerup means capture was lost.
   if ((dragging || rotating) && e.pointerType === 'mouse' && e.buttons === 0) {
     onUp(e, true);
@@ -1533,6 +1564,7 @@ function onUp(e = {}, cancelled = false) {
 
 function updateHoverTag(e) {
   if (!tagEl) return;
+  if (!interactionsReady) { hideTag(); return; }
   // Keep pointer-up over the peeled sticker from starting a second hover
   // entrance while the click-to-detail peel is already running.
   if (peeledStickerForDetail) { hideTag(); cancelHoverFocus(); return; }
@@ -1557,14 +1589,14 @@ function updateHoverTag(e) {
   }
 }
 function scheduleHoverFocus(entry, event) {
-  if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+  if (!interactionsReady || (event.pointerType !== 'mouse' && event.pointerType !== 'pen')) return;
   if (hoverFocusTarget === entry) return;
   cancelHoverFocus();
   hoverFocusTarget = entry;
   const pointerAtIntent = { x: event.clientX, y: event.clientY };
   hoverFocusTimer = setTimeout(() => {
     hoverFocusTimer = null;
-    if (dragging || rotating || hoverFocusTarget !== entry) return;
+    if (!interactionsReady || dragging || rotating || hoverFocusTarget !== entry) return;
     focusedSticker = entry;
     focusedPointer = pointerAtIntent;
     tagEl.classList.add('anchored');
@@ -1596,7 +1628,7 @@ function forgeProject(theta, y, xOffset = 0, yOffset = 0, lift = FOCUS_LIFT) {
     y: (0.5 - _forgeWorld.y * 0.5) * rect.height
   };
 }
-function positionStickerForge(entry, allowFall = stickerForgeFallRoom) {
+function positionStickerForge(entry, allowFall = stickerForgeFallRoom, syncDisplay = true) {
   if (!stickerForgeTarget || !entry || !container) return;
   const h = entry.S / Math.max(entry.aspect || 1, 0.01);
   const lift = entry.lift ?? REST_LIFT;
@@ -1642,7 +1674,7 @@ function positionStickerForge(entry, allowFall = stickerForgeFallRoom) {
     width: boundWidth,
     height: boundHeight
   };
-  if (stickerForge && (!stickerForgeDisplay
+  if (syncDisplay && !(_rotAnim || _yAnim || _inertiaAnim) && stickerForge && (!stickerForgeDisplay
     || Math.abs(stickerForgeDisplay.width - width) > 1.5
     || Math.abs(stickerForgeDisplay.height - height) > 1.5)) {
     stickerForgeDisplay = { width, height };
@@ -1669,7 +1701,8 @@ function stickerForgeMotion(entry) {
   const [origin, target] = pairs[edge];
   return { origin, target };
 }
-async function showStickerForge(entry, { allowFall = false, preserveBase = false } = {}) {
+async function showStickerForge(entry, { allowFall = false, preserveBase = false, quality = null } = {}) {
+  const renderQuality = quality || (allowFall ? 'low' : 'high');
   ensureStickerForgeLayer();
   const generation = ++stickerForgeGeneration;
   stickerForgeFallRoom = allowFall;
@@ -1700,14 +1733,14 @@ async function showStickerForge(entry, { allowFall = false, preserveBase = false
       sound: { enabled: true, volume: 0 },
       material: { type: 'original', intensity: 0 },
       display: stickerForgeDisplay || undefined,
-      quality: allowFall ? 'low' : 'high',
+      quality: renderQuality,
       tilt: 0
     });
   } else if (stickerForgeSource !== src) {
     await stickerForge.setSource({ type: 'image', src, padding: 0 });
   }
   if (generation !== stickerForgeGeneration) return false;
-  stickerForge.setOptions({ quality: allowFall ? 'low' : 'high' });
+  stickerForge.setOptions({ quality: renderQuality });
   stickerForgeSource = src;
   stickerForgeEntry = entry;
   positionStickerForge(entry);
@@ -1760,7 +1793,8 @@ function hideStickerForge(entry = stickerForgeEntry, keepOriginalHidden = false)
   if (stickerForgeHost) stickerForgeHost.style.display = 'none';
   stickerForgeFallOffset = null;
   stickerForgeHoverScale = 1;
-  if (stickerForge && !keepOriginalHidden) stickerForge.setOptions({ quality: 'high' });
+  // Keep the last explicitly selected quality while hidden. Switching back to
+  // high quality here needlessly rebuilds the shadow map after every hover.
   stickerForgeFallRoom = false;
   if (entry && !keepOriginalHidden) {
     if (entry.mesh.material.uniforms.stickerOpacity) entry.mesh.material.uniforms.stickerOpacity.value = 1;
@@ -1774,7 +1808,7 @@ async function animateHoverFocus(entry) {
   let ready = false;
   // Hide the cylinder sticker for the entire Forge entrance. It is restored
   // only during the short cross-fade back after the motion has completed.
-  try { ready = await showStickerForge(entry); }
+  try { ready = await showStickerForge(entry, { quality: 'low' }); }
   catch (error) {
     if (peeledStickerForDetail === entry) return;
     console.error('[Sticker Forge] Could not prepare hover animation:', error);
@@ -1805,7 +1839,7 @@ async function animateHoverFocus(entry) {
     overwrite: 'auto',
     onUpdate: () => {
       stickerForgeHoverScale = scaleCompensation.value;
-      positionStickerForge(entry, false);
+      positionStickerForge(entry, false, false);
     },
     onComplete: () => {
       stickerForgeHoverScale = 1;
@@ -2024,6 +2058,7 @@ function hideTag() { if (tagEl) tagEl.classList.remove('visible'); }
 // This only moves the camera. Sticker placement, peeling, reflection, sound
 // and empty-space drag inertia all remain independent from navigation focus.
 export function focusProject(id) {
+  if (!interactionsReady) return false;
   if (dragging || rotating) return false;
   const target = stickers.find(s => s.data.id === id && s.data.kind !== 'illustration-ip');
   if (!target) return false;
@@ -2050,6 +2085,7 @@ function onResize() {
   const w = container.clientWidth, h = container.clientHeight;
   camera.aspect = w / h; camera.updateProjectionMatrix();
   renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, ROOM_PIXEL_RATIO_CAP));
   if (stickerForgeEntry) positionStickerForge(stickerForgeEntry);
 }
 function renderOnce() { if (renderer && scene && camera) renderer.render(scene, camera); }
@@ -2067,7 +2103,6 @@ function animate() {
   stepDragFollow();
   baseCam();
   updateFocusedTag();
-  if (stickerForgeEntry && stickerForgeHost?.style.display !== 'none') positionStickerForge(stickerForgeEntry);
   renderer.render(scene, camera);
 }
 export function pause()  { isPaused = true; }
@@ -2132,6 +2167,7 @@ export function playReveal() {
   startReveal();
 }
 function startReveal() {
+  interactionsReady = false;
   resume(); // 渲染循环在白屏期间是暂停的，揭幕时恢复
   if (onReadyCb) onReadyCb();
   if (_revealPose) {
@@ -2151,6 +2187,12 @@ function startReveal() {
     if (s.appear >= 1) return;
     s._appearAt = t0 + 180 + i * 42;
   });
+  // Enable pointer gestures only after the final staggered sticker entrance
+  // has completed, so a first click cannot race the reveal/hover animations.
+  const lastStickerDelay = 180 + Math.max(0, stickers.length - 1) * 42;
+  setTimeout(() => {
+    if (revealed) interactionsReady = true;
+  }, reducedMotion() ? 0 : lastStickerDelay + 460);
 }
 function backOut(k) {
   const c1 = 1.70158, c3 = c1 + 1;
