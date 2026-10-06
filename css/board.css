@@ -40,6 +40,75 @@
 .room-loader.is-exiting .room-loader-mark {
   opacity: 0;
 }
+.room-fallback[hidden] { display: none !important; }
+.room-fallback {
+  position: fixed;
+  z-index: 790;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(248,248,246,0.78);
+  backdrop-filter: blur(18px) saturate(115%);
+  -webkit-backdrop-filter: blur(18px) saturate(115%);
+}
+.room-fallback-card {
+  width: min(560px, 100%);
+  padding: clamp(24px, 5vw, 48px);
+  border-radius: 24px;
+  background: rgba(255,255,255,0.78);
+  box-shadow: 0 20px 64px rgba(48,45,40,0.10);
+}
+.room-fallback-kicker {
+  margin: 0 0 12px;
+  color: #77716a;
+  font: 600 11px/1.4 Inter, sans-serif;
+  letter-spacing: .14em;
+}
+.room-fallback-card h1 {
+  margin: 0 0 12px;
+  color: #1a1814;
+  font-size: clamp(22px, 4vw, 30px);
+  line-height: 1.35;
+}
+.room-fallback-card > p:not(.room-fallback-kicker) {
+  margin: 0 0 20px;
+  color: #5e5952;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.room-fallback-projects {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.room-fallback-projects a {
+  display: block;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: rgba(240,238,233,0.8);
+  color: #26231f;
+  font-size: 13px;
+  line-height: 1.5;
+  text-decoration: none;
+}
+.room-fallback-projects a:hover { background: #e9e5dc; }
+.room-fallback-retry {
+  margin-top: 20px;
+  padding: 10px 15px;
+  border: 0;
+  border-radius: 100px;
+  background: #1a1814;
+  color: white;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+@media (max-width: 520px) {
+  .room-fallback { padding: 16px; }
+  .room-fallback-card { border-radius: 18px; }
+  .room-fallback-projects { grid-template-columns: 1fr; max-height: 42vh; overflow-y: auto; }
+}
 
 /* Three.js renders its <canvas> into here */
 .room-canvas {

@@ -445,6 +445,11 @@ export function initRoom(opts) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.domElement.style.touchAction = 'none'; // let pointer drags work on touch
   container.appendChild(renderer.domElement);
+  renderer.domElement.addEventListener('webglcontextlost', event => {
+    event.preventDefault();
+    console.error('[room3d] WebGL context lost; showing the project list fallback.');
+    window.__showRoomFallback?.();
+  }, false);
 
   setupEnvironment();
 

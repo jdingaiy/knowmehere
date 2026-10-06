@@ -6,8 +6,8 @@
   <title>谭加奇 · 作品集</title>
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <meta name="description" content="谭加奇 · UX 设计师 / AI 产品方向 · 天津大学 2027届" />
-  <link rel="stylesheet" href="css/global.css?v=20261006-image-captions" />
-  <link rel="stylesheet" href="css/board.css?v=20261006-room-intro-v3" />
+  <link rel="stylesheet" href="css/global.css?v=20261006-loading-fallback-v1" />
+  <link rel="stylesheet" href="css/board.css?v=20261006-loading-fallback-v1" />
   <link rel="stylesheet" href="css/pages.css?v=20261005-icons-spacing" />
   <!-- Preload critical assets in parallel with the HTML parse so the
        cylinder appears as soon as the JS runs. -->
@@ -15,7 +15,7 @@
         href="assets/texture/gravel_embedded_concrete_2k.blend/textures/gravel_embedded_concrete_diff_2k.jpg" />
   <link rel="preload" as="fetch" crossorigin
         href="assets/ip-manifest.json" />
-  <link rel="modulepreload" href="js/room3d.js?v=20261006-webp-inertia" />
+  <link rel="modulepreload" href="js/room3d.js?v=20261006-loading-fallback-v1" />
   <link rel="preload" as="script" href="js/stickers-data.js" />
 
 </head>
@@ -24,6 +24,56 @@
   <div class="room-loader" id="room-loader" role="status" aria-label="作品正在加载">
     <div class="room-loader-mark"><img src="assets/logo.svg" alt="" /></div>
   </div>
+  <section class="room-fallback" id="room-fallback" aria-labelledby="room-fallback-title" hidden>
+    <div class="room-fallback-card">
+      <p class="room-fallback-kicker">PORTFOLIO</p>
+      <h1 id="room-fallback-title">3D 展示暂时无法启动</h1>
+      <p>可能是网络较慢，或当前浏览器的图形加速不可用。你仍可以直接查看项目详情。</p>
+      <nav class="room-fallback-projects" id="room-fallback-projects" aria-label="项目详情"></nav>
+      <button type="button" class="room-fallback-retry" id="room-fallback-retry">重新加载</button>
+    </div>
+  </section>
+  <script>
+    (() => {
+      const loader = document.getElementById('room-loader');
+      const fallback = document.getElementById('room-fallback');
+      const projectLinks = document.getElementById('room-fallback-projects');
+      let loaderFinished = false;
+      let fallbackShown = false;
+      const exitLoader = () => {
+        if (!loader || !loader.isConnected) return;
+        loader.classList.add('is-exiting');
+        setTimeout(() => loader.remove(), 620);
+      };
+      const showFallback = () => {
+        if (fallbackShown) return;
+        fallbackShown = true;
+        loaderFinished = true;
+        exitLoader();
+        fallback.hidden = false;
+        projectLinks.replaceChildren();
+        (window.STICKERS_DATA || [])
+          .filter(project => !project.hidden && project.longImages?.length)
+          .forEach(project => {
+            const link = document.createElement('a');
+            link.href = `#project=${encodeURIComponent(project.id)}`;
+            link.textContent = project.name;
+            projectLinks.appendChild(link);
+          });
+      };
+      window.__showRoomFallback = showFallback;
+      window.__completeRoomLoader = () => {
+        loaderFinished = true;
+        fallback.hidden = true;
+      };
+      document.getElementById('room-fallback-retry').addEventListener('click', () => location.reload());
+      setTimeout(() => {
+        if (loaderFinished || !loader?.isConnected || loader.classList.contains('is-exiting')) return;
+        if (typeof window.__forceRoomReveal === 'function') window.__forceRoomReveal();
+        else showFallback();
+      }, 10000);
+    })();
+  </script>
 
   <!-- ── TOP BAR: logo + tabs ── -->
   <nav class="ui-topbar" role="navigation" aria-label="页面切换">
@@ -252,6 +302,15 @@
     const reduceMotion = () => motionPreference.reduce;
     window.__motionReduced = reduceMotion;
     const overlay   = document.getElementById('modal-overlay');
+    const closeButton = document.querySelector('.modal-close-btn');
+    let previousModalScroll = 0;
+    overlay.addEventListener('scroll', () => {
+      const nextScroll = overlay.scrollTop;
+      const delta = nextScroll - previousModalScroll;
+      if (nextScroll < 40 || delta < -2) closeButton.classList.remove('is-scroll-hidden');
+      else if (delta > 2 && nextScroll > 40) closeButton.classList.add('is-scroll-hidden');
+      previousModalScroll = nextScroll;
+    }, { passive: true });
     const dlBtn     = document.getElementById('dl-btn');
     const track     = document.getElementById('app-track');
     const tabWorks  = document.getElementById('tab-works');
@@ -361,6 +420,8 @@
       // Always start each detail page from the top — don't inherit the
       // scroll position of whichever modal was opened previously.
       overlay.scrollTop = 0;
+      previousModalScroll = 0;
+      closeButton.classList.remove('is-scroll-hidden');
       if (window.__room) window.__room.pause();
       initCarousel();
       if (isIp) enableIpDrag();
@@ -483,7 +544,7 @@
     }    overlay.addEventListener('click', e => {
       if (e.target === overlay) closeModal();
     });
-    document.querySelector('.modal-close-btn').addEventListener('click', () => closeModal());
+    closeButton.addEventListener('click', () => closeModal());
     document.addEventListener('keydown', e => {
       if (e.key !== 'Escape') return;
       if (lightbox.classList.contains('open')) closeLightbox();
@@ -778,7 +839,7 @@
 
   <!-- 3D room (module) -->
   <script type="module">
-    import { initRoom, addStickers, finishStickerRegistration, focusProject, pause, resume, playReveal } from './js/room3d.js?v=20261006-webp-inertia';
+    import { initRoom, addStickers, finishStickerRegistration, focusProject, pause, resume, playReveal } from './js/room3d.js?v=20261006-loading-fallback-v1';
     const container = document.getElementById('room-canvas');
     const introLoader = document.getElementById('room-loader');
     const introStartedAt = performance.now();
@@ -786,14 +847,27 @@
     const finishIntro = () => {
       if (introReady) return;
       introReady = true;
+      window.__completeRoomLoader?.();
       const remaining = Math.max(0, 2000 - (performance.now() - introStartedAt));
       setTimeout(() => {
-        playReveal();
+        try { playReveal(); }
+        catch (error) { console.error('[portfolio] reveal failed:', error); window.__showRoomFallback?.(); }
         requestAnimationFrame(() => introLoader?.classList.add('is-exiting'));
         setTimeout(() => introLoader?.remove(), 620);
       }, remaining);
     };
-    initRoom({ container, modalApi: window.__modalApi, onReady: finishIntro });
+    let roomAvailable = false;
+    try {
+      initRoom({ container, modalApi: window.__modalApi, onReady: finishIntro });
+      roomAvailable = true;
+      window.__forceRoomReveal = () => {
+        try { finishIntro(); }
+        catch (error) { console.error('[portfolio] forced reveal failed:', error); window.__showRoomFallback?.(); }
+      };
+    } catch (error) {
+      console.error('[portfolio] 3D room initialization failed:', error);
+      window.__showRoomFallback?.();
+    }
 
     // Load the IP-asset manifest, expand each sticker PNG into a synthetic
     // sticker-data entry (kind='illustration-ip'), and add them alongside the
@@ -808,17 +882,26 @@
 
     async function loadIpStickers() {
       try {
-        const r = await fetch('assets/ip-manifest.json', { cache: 'no-cache' });
-        if (!r.ok) return [];
-        const m = await r.json();
-        // 原私有 IP 清单（全站公开后与公开清单等价，保留拆分以兼容旧逻辑）。
-        try {
-          const rp = await fetch('assets/ip-manifest-private.json', { cache: 'no-cache' });
-          if (rp.ok) {
-            const mp = await rp.json();
-            m.ips = [...(m.ips || []), ...(mp.ips || [])];
+        const fetchManifest = async path => {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 4500);
+          try {
+            const response = await fetch(path, { cache: 'no-cache', signal: controller.signal });
+            return response.ok ? await response.json() : null;
+          } catch (error) {
+            console.warn('[portfolio] optional IP manifest unavailable:', path, error);
+            return null;
+          } finally {
+            clearTimeout(timeout);
           }
-        } catch (e) { /* 去敏模式下拿不到，正常 */ }
+        };
+        const [m, mp] = await Promise.all([
+          fetchManifest('assets/ip-manifest.json'),
+          fetchManifest('assets/ip-manifest-private.json'),
+        ]);
+        if (!m) return [];
+        // 合并可选清单；两份清单并行请求且都有超时，不影响首页启动。
+        m.ips = [...(m.ips || []), ...(mp?.ips || [])];
         // Cylinder shows just a teaser per IP — 2–3 random stickers, not the
         // full set. The detail page still draws every sticker from the manifest.
         const out = [];
@@ -866,14 +949,16 @@
     }
     // Start the core project stickers immediately. The IP manifest can be
     // slow or unavailable and should never hold the whole room behind it.
-    addStickers((window.STICKERS_DATA || []).filter(project => !project.hidden));
-    (async () => {
-      const ipItems = await loadIpStickers();
-      if (ipItems.length) addStickers(ipItems);
+    if (roomAvailable) {
+      addStickers((window.STICKERS_DATA || []).filter(project => !project.hidden));
+      // The core project set can reveal as soon as its own textures are ready.
+      // IP artwork loads independently and never gates the homepage.
       finishStickerRegistration();
-    })();
-
-    window.__room = { focusProject, pause, resume };
+      loadIpStickers().then(ipItems => {
+        if (ipItems.length) addStickers(ipItems);
+      });
+      window.__room = { focusProject, pause, resume };
+    }
   </script>
 </body>
 </html>

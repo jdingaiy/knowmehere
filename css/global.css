@@ -453,7 +453,7 @@ body.modal-open .modal-close-btn { opacity: 1; pointer-events: auto; }
   width: 100%;
   height: auto;
   margin: 0;
-  border-radius: 16px;
+  border-radius: clamp(14px, 1.6vw, 22px);
   corner-shape: squircle;
   cursor: zoom-in;
 }
@@ -465,7 +465,9 @@ body.modal-open .modal-close-btn { opacity: 1; pointer-events: auto; }
   font-size: 12px;
   line-height: 1.8;
   text-align: left;
-  text-wrap: pretty;
+  text-wrap: wrap;
+  line-break: strict;
+  word-break: normal;
 }
 .dp-long-item figcaption strong {
   display: block;
@@ -477,13 +479,29 @@ body.modal-open .modal-close-btn { opacity: 1; pointer-events: auto; }
 }
 .dp-long-item figcaption span { display: block; }
 @media (max-width: 720px) {
+  .dp-long img { border-radius: clamp(8px, 2.4vw, 11px); }
   .dp-long-item figcaption {
     margin-top: 18px;
     font-size: 12px;
     line-height: 1.7;
     text-align: left;
+    line-break: strict;
+    word-break: normal;
+    text-wrap: wrap;
   }
   .dp-long-item figcaption strong { font-size: 13px; }
+  .dp-intro > p:last-child { line-break: strict; word-break: normal; text-wrap: wrap; }
+  .modal-close-btn {
+    top: max(12px, env(safe-area-inset-top, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
+    width: 40px;
+    height: 40px;
+  }
+  body.modal-open .modal-close-btn.is-scroll-hidden {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: translateY(-8px);
+  }
 }
 
 .dp-section-label {
