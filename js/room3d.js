@@ -430,6 +430,7 @@ const shadowFrag = `
   }
 `;
 
+let webglRecoveryTimer = null;
 /* ============ INIT ============ */
 export function initRoom(opts) {
   container = opts.container;
@@ -457,8 +458,19 @@ export function initRoom(opts) {
   container.appendChild(renderer.domElement);
   renderer.domElement.addEventListener('webglcontextlost', event => {
     event.preventDefault();
-    console.error('[room3d] WebGL context lost; showing the project list fallback.');
-    window.__showRoomFallback?.();
+    console.warn('[room3d] WebGL context lost; waiting for browser recovery.');
+    clearTimeout(webglRecoveryTimer);
+    webglRecoveryTimer = setTimeout(() => {
+      if (renderer?.getContext()?.isContextLost()) {
+        console.error('[room3d] WebGL context did not recover; showing project fallback.');
+        window.__showRoomFallback?.();
+      }
+    }, 4000);
+  }, false);
+  renderer.domElement.addEventListener('webglcontextrestored', () => {
+    clearTimeout(webglRecoveryTimer);
+    webglRecoveryTimer = null;
+    console.info('[room3d] WebGL context restored.');
   }, false);
 
   setupEnvironment();
@@ -2046,6 +2058,9 @@ function openPeeledDetail(entry) {
   hideStickerForge(entry, true);
   entry.mesh.visible = false;
   if (entry.shMesh) entry.shMesh.visible = false;
+  // Commit the hidden sticker to the room canvas before openModal pauses the
+  // room; otherwise the last rendered frame can retain the attached sticker.
+  renderOnce();
   modalApi.open(entry.data);
 }
 function restorePeeledSticker() {
