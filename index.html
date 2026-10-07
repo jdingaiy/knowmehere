@@ -16,7 +16,7 @@
   <link rel="preload" as="image" href="assets/loader/character-turntable-loop.gif" />
   <link rel="preload" as="fetch" crossorigin
         href="assets/ip-manifest.json" />
-  <link rel="modulepreload" href="js/room3d.js?v=20261006-sticker-forge-logo-peel-v2" />
+  <link rel="modulepreload" href="js/room3d.js?v=20261007-webgl-detail-recovery-v1" />
   <link rel="preload" as="script" href="js/stickers-data.js" />
 
 </head>
@@ -474,6 +474,12 @@
           .fromTo('.modal-box', { y: reduceMotion() ? 0 : 24 }, { y: 0, duration, ease: 'power3.out' }, 0)
           .fromTo('.modal-close-btn', { autoAlpha: 0, scale: reduceMotion() ? 1 : 0.88 },
             { autoAlpha: 1, scale: 1, duration: duration * 0.7, ease: 'back.out(1.5)' }, 0.06);
+      }).catch(error => {
+        if (renderToken !== modalRenderToken || currentModal !== d) return;
+        console.error('[portfolio] Detail page enhancement failed:', error);
+        detailLoader.hidden = true;
+        overlay.classList.remove('is-loading', 'is-preparing');
+        document.body.classList.remove('modal-loading', 'modal-preparing');
       });
     }
     function closeModal(fromRoute = false) {
@@ -890,7 +896,7 @@
 
   <!-- 3D room (module) -->
   <script type="module">
-    import { initRoom, addStickers, finishStickerRegistration, focusProject, pause, resume, playReveal, peelLoaderLogo } from './js/room3d.js?v=20261006-sticker-forge-logo-peel-v2';
+    import { initRoom, addStickers, finishStickerRegistration, focusProject, pause, resume, playReveal, peelLoaderLogo } from './js/room3d.js?v=20261007-webgl-detail-recovery-v1';
     window.__peelRoomLoaderLogo = peelLoaderLogo;
     const container = document.getElementById('room-canvas');
     const introLoader = document.getElementById('room-loader');
