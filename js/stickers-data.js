@@ -57,7 +57,7 @@ const STICKERS_DATA = [
     tags: ['Vibe Coding', '品牌官网', '前端开发'],
     description: '为智能硬件品牌「它石智航」vibe coding 的官网首页 demo，探索沉浸式科技叙事与品牌视觉的结合。全程使用 Cursor 辅助完成从设计到前端实现的完整链路。',
     role: '独立设计 & 开发',
-    period: '2025',
+    period: '2026.05',
     metrics: [
       { value: '全栈', label: 'Vibe Coding 实现' },
     ],
