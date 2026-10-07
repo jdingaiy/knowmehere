@@ -281,6 +281,18 @@
       }, effect.duration + 80);
     });
 
+    function detailPreviewSource(src) {
+      const value = String(src || '');
+      if (value.startsWith('assets/projects-webp/')) return value.replace('assets/projects-webp/', 'assets/project-previews/');
+      if (value.startsWith('assets/projects/')) return value.replace('assets/projects/', 'assets/project-previews/');
+      return value;
+    }
+    function detailMobilePreviewSource(src) {
+      const value = String(src || '');
+      if (value.startsWith('assets/projects-webp/')) return value.replace('assets/projects-webp/', 'assets/project-previews-mobile/');
+      if (value.startsWith('assets/projects/')) return value.replace('assets/projects/', 'assets/project-previews-mobile/');
+      return value;
+    }
     function renderModal(d) {
       // Special view: any IP-illustration sticker opens that IP's detail page.
       if (d && d.kind === 'illustration-ip') return renderIpModal(d);
@@ -310,7 +322,7 @@
                const caption = d.longImageCaptions?.[index] || '';
                const loading = index === 0 ? 'eager' : 'lazy';
                return `<figure class="dp-long-item">
-                 <img src="${src}" alt="${d.name}" loading="${loading}" decoding="async" tabindex="0" role="button" aria-label="点击放大查看：${d.name}" />
+                 <img src="${encodeURI(detailPreviewSource(src))}" srcset="${encodeURI(detailMobilePreviewSource(src))} 1600w, ${encodeURI(detailPreviewSource(src))} 3200w" sizes="(max-width: 720px) calc(100vw - 32px), calc(100vw - 144px)" data-full-src="${encodeURI(src)}" alt="${d.name}" loading="${loading}" decoding="async" tabindex="0" role="button" aria-label="点击放大查看：${d.name}" />
                  ${caption ? `<figcaption><strong>${caption.title || ''}</strong><span>${caption.body || caption}</span></figcaption>` : ''}
                </figure>`;
              }).join('')}
@@ -358,7 +370,7 @@
       // page, contained with padding so we always see the full picture.
       const pages = (ip.longImages || []).map((img, index) =>
         `<section class="ip-page">
-           <img src="${encodeURI(img)}" alt="${ip.name}" loading="${index === 0 ? 'eager' : 'lazy'}" decoding="async" />
+           <img src="${encodeURI(detailPreviewSource(img))}" srcset="${encodeURI(detailMobilePreviewSource(img))} 1600w, ${encodeURI(detailPreviewSource(img))} 3200w" sizes="100vw" data-full-src="${encodeURI(img)}" alt="${ip.name}" loading="${index === 0 ? 'eager' : 'lazy'}" decoding="async" />
          </section>`
       );
 
@@ -399,7 +411,7 @@
       // pages can contain many full-resolution images; lazy images load as
       // the visitor scrolls, avoiding simultaneous decode pressure in Safari.
       const images = [...overlay.querySelectorAll('.modal-box img')]
-        .filter(img => img.loading !== 'lazy');
+        .filter(img => img.loading !== 'lazy' && img.matches('.dp-intro-sticker'));
       const imagePromises = images.map(img => new Promise(resolve => {
         const finish = () => {
           if (img.naturalWidth && typeof img.decode === 'function') {
@@ -620,13 +632,19 @@
 
     const lightbox = document.getElementById('image-lightbox');
     const lightboxImg = lightbox.querySelector('img');
+    overlay.addEventListener('error', event => {
+      const img = event.target.closest?.('img[data-full-src]');
+      if (!img || img.dataset.fullFallback) return;
+      img.dataset.fullFallback = 'true';
+      img.src = img.dataset.fullSrc;
+    }, true);
     function closeLightbox() {
       lightbox.classList.remove('open');
       lightbox.setAttribute('aria-hidden', 'true');
       lightboxImg.removeAttribute('src');
     }
     function showLightbox(img) {
-      lightboxImg.src = img.currentSrc || img.src;
+      lightboxImg.src = img.dataset.fullSrc || img.currentSrc || img.src;
       lightboxImg.alt = img.alt || '放大查看';
       lightbox.classList.add('open');
       lightbox.setAttribute('aria-hidden', 'false');
